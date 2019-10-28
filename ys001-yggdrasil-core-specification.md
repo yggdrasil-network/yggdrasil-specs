@@ -2,7 +2,7 @@
 
 | ID    | Name                         | Version | Status | Authors        | Date        |
 |:------|:-----------------------------|:--------|:-------|:---------------|:------------|
-| YS001 | Yggdrasil Core Specification | 0.1     | Draft  | Neil Alexander | 26-Oct-2019 |
+| YS001 | Yggdrasil Core Specification | 0.1     | Draft  | Neil Alexander | 28-Oct-2019 |
 
 ## About this document
 
@@ -93,7 +93,7 @@ the "highest" value, e.g. the highest number of leading one bits set.
 
 The Yggdrasil protocol is a binary protocol. Every message has one or more
 fields, matching one of the below base types. The first bytes of every message
-represent a `uint64` (see below) which defines the message type code, although
+represent a `varu64` (see below) which defines the message type code, although
 this is typically compressed down into a single byte. The structure of the
 message following that message type code must comply with that message type as
 defined.
@@ -109,13 +109,14 @@ base type definitions below.
 
 The Yggdrasil protocol defines the following base types:
 
-- `uint64`: Variable-length unsigned 64-bit integer
+- `varu64`: Variable-length unsigned 64-bit integer
+- `vari64`: Variable-length signed 64-bit integer
 - `bytes`: Variable-length byte array
 - `coords`: Variable-length byte array containing coordinates
 
 #### Unsigned 64-bit integers
 
-All integers on the wire are treated as `uint64` which, with variable-length
+All integers on the wire are treated as `varu64` which, with variable-length
 encoding, encode into a `bytes` array of at most 10 bytes. This variable-length
 encoding mechanism ensures that small values will use less bytes on the wire,
 and that in future, larger integer types can be used if appropriate.
@@ -124,20 +125,24 @@ Each byte is composed of 8 bits where:
 
 1. The most-significant bit (MSB) is a "continuation byte" - set to 1 if there
    is another byte following this one, or set to 0 if this is the last byte
-1. The remaining 7 bits contain the next 7 bits of the `uint64` value at a time
+1. The remaining 7 bits contain the next 7 bits of the `varu64` value at a time
 
-To encode a `uint64`, take 7 bits of the value at a time and place them into
+To encode a `varu64`, take 7 bits of the value at a time and place them into
 the least-significant 7 bits of your target byte, and then set the
 most-significant bit to 1 if there are more bits to come in a future byte.
 Repeat with additional bytes until you have encoded all bits of the original
-`uint64`.
+`varu64`.
 
-To decode a `uint64`, this process should be reversed, repeating through each
+To decode a `varu64`, this process should be reversed, repeating through each
 byte up until the most-significant bit has a value of 0, denoting the end of the
-sequence. For a `uint64`, the implementation **must not** process any extraneous
+sequence. For a `varu64`, the implementation **must not** process any extraneous
 bytes above the maximum 10 bytes.
 
-Where the value is signed instead of unsigned, zig-zag encoding is used.
+#### Signed 64-bit integers
+
+The same compression as unsigned integers above applies. However, for signed
+integers, zig-zag encoding is used.
+
 Positive values of `x` are encoded as `2*x+0` and negative values of `x` are
 encoded as `2*(^x)+1`, allowing negative numbers to be complemented - in this
 case, bit 0 denotes whether to complement or not.  
@@ -155,21 +160,21 @@ they are the last field in the message.
 #### Coordinates
 
 Coordinates are encoded into byte arrays, however, they have special behaviour.
-Coordinates are variable-length arrays of `uint64`s, therefore encoding
+Coordinates are variable-length arrays of `varu64`s, therefore encoding
 coordinates is a three-step process:
 
-1. Encode each `uint64` element of the coordinates into a `bytes` array, as
+1. Encode each `varu64` element of the coordinates into a `bytes` array, as
    above
 1. Concatenate all resultant `bytes` arrays into one contiguous `bytes` array
-1. Prefix the contiguous `bytes` array with a `uint64` which contains the
+1. Prefix the contiguous `bytes` array with a `varu64` which contains the
    final array length
 
 To decode `coords`, perform the same process in reverse:
 
-1. Decode the beginning of the bytes array as a `uint64` which will show the
+1. Decode the beginning of the bytes array as a `varu64` which will show the
    length in bytes for this set of coordinates, advancing by the number of bytes
-  used by the `uint64` length field
-1. Continue to decode the next bytes as a `uint64`, appending the result to the
+  used by the `varu64` length field
+1. Continue to decode the next bytes as a `varu64`, appending the result to the
    discovered coordinates
 1. Continue through the bytes until the initial length value has been reached
 
@@ -237,7 +242,7 @@ key leakage and to add replay resistance to the payload.
 
 | Field | Type     | Description                                | Length   | Encrypted |
 |:------|:---------|:-------------------------------------------|:---------|:----------|
-| 1     | `uint64` | Message code: **must** have a value of `0` | 1 byte   | No        |
+| 1     | `varu64` | Message code: **must** have a value of `0` | 1 byte   | No        |
 | 2     | `coords` | Target coordinates                         | Variable | No        |
 | 3     | `bytes`  | Encryption handle                          | 8 bytes  | No        |
 | 4     | `bytes`  | Encryption nonce                           | 24 bytes | No        |
@@ -257,7 +262,7 @@ prevent secret key leakage and to add replay resistance to the payload.
 
 | Field | Type     | Description                                | Length   | Encrypted |
 |:------|:---------|:-------------------------------------------|:---------|:----------|
-| 1     | `uint64` | Message code: **must** have a value of `1` | 1 byte   | No        |
+| 1     | `varu64` | Message code: **must** have a value of `1` | 1 byte   | No        |
 | 2     | `coords` | Target coordinates                         | Variable | No        |
 | 3     | `bytes`  | Target public encryption key               | 32 bytes | No        |
 | 4     | `bytes`  | Sender public encryption key               | 32 bytes | No        |
@@ -284,7 +289,7 @@ prevent secret key leakage and to add replay resistance to the payload.
 
 | Field | Type     | Description                                | Length   | Encrypted |
 |:------|:---------|:-------------------------------------------|:---------|:----------|
-| 1     | `uint64` | Message code: **must** have a value of `2` | 1 byte   | No        |
+| 1     | `varu64` | Message code: **must** have a value of `2` | 1 byte   | No        |
 | 2     | `bytes`  | Encryption nonce                           | 24 bytes | No        |
 | 3     | `bytes`  | Encrypted message payload                  | Variable | Yes       |
 
@@ -309,17 +314,17 @@ When establishing a new session, a node **must** generate an ephemeral set of
 ephemeral session public key is then sent to the remote side and is used to
 agree a shared session key, with which all session traffic is encrypted.
 
-Although represented as a `uint64`, the maximum supported session MTU (field 6)
+Although represented as a `varu64`, the maximum supported session MTU (field 6)
 **should not** exceed a value of `65535` or be below a value of `1280`.
 
 | Field | Type     | Description                                | Length        |
 |:------|:---------|:-------------------------------------------|:--------------|
-| 1     | `uint64` | Message code: **must** have a value of `4` | 1 byte        |
+| 1     | `varu64` | Message code: **must** have a value of `4` | 1 byte        |
 | 2     | `bytes`  | Encryption handle                          | 8 bytes       |
 | 3     | `bytes`  | Sender ephemeral session public key        | 32 bytes      |
-| 4     | `uint64` | Timestamp                                  | 1 to 10 bytes |
+| 4     | `varu64` | Timestamp                                  | 1 to 10 bytes |
 | 5     | `coords` | Sender coordinates                         | Variable      |
-| 6     | `uint64` | Sender maximum supported session MTU       | 1 to 2 bytes  |
+| 6     | `varu64` | Sender maximum supported session MTU       | 1 to 2 bytes  |
 
 #### Session pong
 
@@ -336,17 +341,17 @@ kept for the lifetime of the session. The ephemeral session public key is then
 sent to the remote side and is used to agree a shared session key, with which
 all session traffic is encrypted.
 
-Although represented as a `uint64`, the maximum supported session MTU (field 6)
+Although represented as a `varu64`, the maximum supported session MTU (field 6)
 **should not** exceed a value of `65535` or be below a value of `1280`.
 
 | Field | Type     | Description                                | Length        |
 |:------|:---------|:-------------------------------------------|:--------------|
-| 1     | `uint64` | Message code: **must** have a value of `5` | 1 byte        |
+| 1     | `varu64` | Message code: **must** have a value of `5` | 1 byte        |
 | 2     | `bytes`  | Encryption handle                          | 8 bytes       |
 | 3     | `bytes`  | Sender ephemeral session public key        | 32 bytes      |
-| 4     | `uint64` | Timestamp                                  | 1 to 10 bytes |
+| 4     | `varu64` | Timestamp                                  | 1 to 10 bytes |
 | 5     | `coords` | Sender coordinates                         | Variable      |
-| 6     | `uint64` | Sender maximum supported session MTU       | 1 to 2 bytes  |
+| 6     | `varu64` | Sender maximum supported session MTU       | 1 to 2 bytes  |
 
 #### DHT request
 
@@ -358,7 +363,7 @@ The sending node **must** know at least a partial Node ID to search the DHT for.
 
 | Field | Type     | Description                                 | Length   |
 |:------|:---------|:--------------------------------------------|:---------|
-| 1     | `uint64` | Message code: **must** have a value of `6`  | 1 byte   |
+| 1     | `varu64` | Message code: **must** have a value of `6`  | 1 byte   |
 | 2     | `coords` | Sender coordinates                          | Variable |
 | 3     | `bytes`  | Known bytes of target Node ID to search for | Variable |
 
@@ -373,7 +378,7 @@ fields n<sub>1</sub> and n<sub>2</sub> may be repeated multiple times.
 
 | Field         | Type     | Description                                | Length   |
 |:--------------|:---------|:-------------------------------------------|:---------|
-| 1             | `uint64` | Message code: **must** have a value of `7` | 1 byte   |
+| 1             | `varu64` | Message code: **must** have a value of `7` | 1 byte   |
 | 2             | `coords` | Sender coordinates                         | 8 bytes  |
 | 3             | `bytes`  | Known bytes of target Node ID searched for | 64 bytes |
 | n<sub>1</sub> | `bytes`  | Target candidate public encryption key     | 32 bytes |
@@ -405,9 +410,9 @@ signatures, where `n` is the number of hops from the node to the root.
 
 | Field         | Type     | Description                                | Length        |
 |:--------------|:---------|:-------------------------------------------|:--------------|
-| 1             | `uint64` | Message code: **must** have a value of `3` | 1 byte        |
+| 1             | `varu64` | Message code: **must** have a value of `3` | 1 byte        |
 | 2             | `bytes`  | Root node public signing key               | 32 bytes      |
-| 3             | `uint64` | Timestamp                                  | 1 to 10 bytes |
+| 3             | `varu64` | Timestamp                                  | 1 to 10 bytes |
 | n<sub>1</sub> | `bytes`  | Update node public signing key             | 32 bytes      |
 | n<sub>2</sub> | `bytes`  | Update signature                           | 64 bytes      |
 
