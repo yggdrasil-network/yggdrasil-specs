@@ -116,10 +116,11 @@ The Yggdrasil protocol defines the following base types:
 
 #### Unsigned 64-bit integers
 
-All integers on the wire are treated as `varu64` which, with variable-length
-encoding, encode into a `bytes` array of at most 10 bytes. This variable-length
-encoding mechanism ensures that small values will use less bytes on the wire,
-and that in future, larger integer types can be used if appropriate.
+All unsigned integers on the wire are encoded as `varu64` which, with
+variable-length encoding, encode into a `bytes` array of at most 10 bytes. This
+variable-length encoding mechanism ensures that small values will use less bytes
+on the wire, and that in future, larger integer types can be used if
+appropriate.
 
 Each byte is composed of 8 bits where:
 
@@ -140,8 +141,10 @@ bytes above the maximum 10 bytes.
 
 #### Signed 64-bit integers
 
-The same compression as unsigned integers above applies. However, for signed
-integers, zig-zag encoding is used.
+All signed integers on the wire are encoded as `vari64`, using the same
+compression as `varu64`, specified above. However, for signed integers, zig-zag
+encoding is also used in order to preserve whether a value is positive or
+negative.
 
 Positive values of `x` are encoded as `2*x+0` and negative values of `x` are
 encoded as `2*(^x)+1`, allowing negative numbers to be complemented - in this
@@ -388,8 +391,8 @@ fields n<sub>1</sub> and n<sub>2</sub> may be repeated multiple times.
 
 #### Switch update
 
-A switch update is a message that contains a fully signed path from a node up to
-the root node.
+A switch update is a message that contains a fully signed path containing all
+hops from the root node down to a given node.
 
 The root node sends a switch update message to all directly connected peers,
 containing a timestamp and its own signing key. The switch update message
@@ -581,8 +584,9 @@ At any point, a node may send a DHT request for a given Node ID. The DHT request
    to `0`)
 
 The DHT request is then sent to the locally-known/cached DHT neighbour that has
-the closest Node ID to the target Node ID in the request. A request is not
-guaranteed to yield a response.
+the closest Node ID to the target Node ID in the request. Note that a request is
+not guaranteed to yield a response, therefore the node **should** time out
+waiting for a response after a given timeframe.
 
 ### Responses
 
@@ -655,12 +659,13 @@ of other network nodes. This happens if:
 
 When a message is received for forwarding, the node **must** make a decision as
 to which node to forward onto next, except where the destination coordinates of
-a message are equal to the coordinates of the current node.
+a message are equal to the coordinates of the current node, in which case the
+message is considered to have been delivered.
 
 The node should evaluate each direct peering and determine which peering will
 take the message closest to the target destination coordinates. This is done by
-calculating the distance metric between the peer's coordinates and the target
-coordinates, selecting the peer which returns the shortest distance.
+calculating the metric distance between the peer's coordinates and the target
+coordinates, selecting the peering which returns the shortest distance.
 
 A node **must not** forward traffic to any node which is not closer to the
 destination.
@@ -685,6 +690,26 @@ The length of `L`'s coordinates is 3, the length of `A`'s coordinates is 6 and
 the length of `B`'s coordinates is 5. By subtracting 3 from 6, and then
 subtracting 3 from 5, and adding together both results, the total distance
 calculated between node `A` and node `B` is 5 hops.
+
+### Distance tie-break
+
+In some cases, multiple peers may result in the same metric distance for a given
+set of target coordinates. Therefore, the node **should** implement a tie-break
+algorithm in order to determine which of the "best" peers should be selected to
+receive the forwarded traffic.
+
+Although a tie-break algorithm is deliberately not defined here, an
+implementation **should** consider one or more of the following factors when
+deterministically selecting the best peer to forward to:
+
+1. The uptime of each peering
+1. The relative latency of each peering, based on which peerings deliver switch
+   update messages from the root node first
+1. The average utilisation of each peering
+
+Alternatively, a non-deterministic approach **may** be used, e.g. by selecting
+from the candidate peers randomly, although doing so may have unintended
+negative side-effects on performance and is not recommended.
 
 ---
 
