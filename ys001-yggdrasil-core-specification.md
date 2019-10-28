@@ -1,7 +1,7 @@
 # YS001: Yggdrasil Core Specification
 
 | ID    | Name                         | Version | Status | Authors        | Date        |
-|:----- |:---------------------------- |:------- |:------ |:-------------- |:----------- |
+|:------|:-----------------------------|:--------|:-------|:---------------|:------------|
 | YS001 | Yggdrasil Core Specification | 0.1     | Draft  | Neil Alexander | 26-Oct-2019 |
 
 ## About this document
@@ -178,7 +178,7 @@ To decode `coords`, perform the same process in reverse:
 Yggdrasil implements the following top-level message types:
 
 | Code | Name                  | Scope  | Defined in |
-|:---- |:--------------------- |:------ |:---------- |
+|:-----|:----------------------|:-------|:-----------|
 | 0    | Traffic               | Global | YS001      |
 | 1    | Protocol message      | Global | YS001      |
 | 2    | Link protocol message | Link   | YS001      |
@@ -198,7 +198,7 @@ Encapsulated within a **protocol message**, Yggdrasil implements the following
 second-level message types:
 
 | Code | Name         | Defined in |
-|:---- |:------------ |:---------- |
+|:-----|:-------------|:-----------|
 | 4    | Session ping | YS001      |
 | 5    | Session pong | YS001      |
 | 6    | DHT request  | YS001      |
@@ -210,7 +210,7 @@ Encapsulated within a **link protocol message**, Yggdrasil implements the
 following second-level message types:
 
 | Code | Name          | Defined in |
-|:---- |:------------- |:---------- |
+|:-----|:--------------|:-----------|
 | 3    | Switch update | YS001      |
 
 ### Top-level message formats
@@ -223,14 +223,20 @@ A traffic message contains a payload which can be sent between any two nodes on
 the network, being forwarded by intermediate nodes if necessary in order to
 reach its destination.
 
-The payload (field 5) is encrypted using session keys known only to the two
-endpoints of the session. The handle (field 3) identifies that cryptographic
-handshake and the nonce (field 4) contains the one-time value required by
-`curve25519` to prevent secret key leakage and to add replay resistance to the
-payload.
+This message type **must** only be used to send session traffic. This message
+type **must not** be used to encapsulate Yggdrasil protocol traffic.
+
+The payload (field 5) is encrypted using shared session keys known only to the
+two endpoints of the session. The contents of the payload (field 5) **must not**
+exceed the maximum supported MTU size of the session to which the handle (field
+3) refers.
+
+The handle (field 3) identifies that cryptographic handshake and the nonce
+(field 4) contains the one-time value required by `curve25519` to prevent secret
+key leakage and to add replay resistance to the payload.
 
 | Field | Type     | Description                                | Length   | Encrypted |
-|:----- |:-------- |:------------------------------------------ |:-------- |:--------- |
+|:------|:---------|:-------------------------------------------|:---------|:----------|
 | 1     | `uint64` | Message code: **must** have a value of `0` | 1 byte   | No        |
 | 2     | `coords` | Target coordinates                         | Variable | No        |
 | 3     | `bytes`  | Encryption handle                          | 8 bytes  | No        |
@@ -250,7 +256,7 @@ The nonce (field 5) contains the one-time value required by `curve25519` to
 prevent secret key leakage and to add replay resistance to the payload.
 
 | Field | Type     | Description                                | Length   | Encrypted |
-|:----- |:-------- |:------------------------------------------ |:-------- |:--------- |
+|:------|:---------|:-------------------------------------------|:---------|:----------|
 | 1     | `uint64` | Message code: **must** have a value of `1` | 1 byte   | No        |
 | 2     | `coords` | Target coordinates                         | Variable | No        |
 | 3     | `bytes`  | Target public encryption key               | 32 bytes | No        |
@@ -277,7 +283,7 @@ The nonce (field 2) contains the one-time value required by `curve25519` to
 prevent secret key leakage and to add replay resistance to the payload.
 
 | Field | Type     | Description                                | Length   | Encrypted |
-|:----- |:-------- |:------------------------------------------ |:-------- |:--------- |
+|:------|:---------|:-------------------------------------------|:---------|:----------|
 | 1     | `uint64` | Message code: **must** have a value of `2` | 1 byte   | No        |
 | 2     | `bytes`  | Encryption nonce                           | 24 bytes | No        |
 | 3     | `bytes`  | Encrypted message payload                  | Variable | Yes       |
@@ -298,11 +304,16 @@ A session ping is sent in response to the following conditions:
    1. The node's coordinates have changed
    1. The local maximum supported session MTU has changed
 
+When establishing a new session, a node **must** generate an ephemeral set of
+`curve25519` session keys, which are kept for the lifetime of the session. The
+ephemeral session public key is then sent to the remote side and is used to
+agree a shared session key, with which all session traffic is encrypted.
+
 Although represented as a `uint64`, the maximum supported session MTU (field 6)
 **should not** exceed a value of `65535` or be below a value of `1280`.
 
 | Field | Type     | Description                                | Length        |
-|:----- |:-------- |:------------------------------------------ |:------------- |
+|:------|:---------|:-------------------------------------------|:--------------|
 | 1     | `uint64` | Message code: **must** have a value of `4` | 1 byte        |
 | 2     | `bytes`  | Encryption handle                          | 8 bytes       |
 | 3     | `bytes`  | Sender ephemeral session public key        | 32 bytes      |
@@ -319,26 +330,17 @@ If the node wishes to participate in a session with a remote node, the node
 **must** respond to the session ping by sending a matching session pong in order
 to acknowledge the session.
 
-Nodes **must not** consider a session to be established or to send any session
-traffic until a session pong has been received from the remote side. Unsolicited
-session traffic **must** be dropped on arrival if it does not belong to an
-acknowledged session.
-
-However, a node **may** ignore a session ping if it does not wish to accept the
-session, e.g. as a result of whitelisting based on the sender public encryption
-key in the protocol traffic headers.
-
-If no session pong is received from the remote side, the node that sent the
-original session ping **may** resend the original session ping at an interval
-that **should not** be more frequent than once per second, until it becomes
-obvious that the remote node is not responding either deliberately, or because
-it is offline.
+When responding to a session ping in an attempt to establish a new session, a
+node **must** generate an ephemeral set of `curve25519` session keys, which are
+kept for the lifetime of the session. The ephemeral session public key is then
+sent to the remote side and is used to agree a shared session key, with which
+all session traffic is encrypted.
 
 Although represented as a `uint64`, the maximum supported session MTU (field 6)
 **should not** exceed a value of `65535` or be below a value of `1280`.
 
 | Field | Type     | Description                                | Length        |
-|:----- |:-------- |:------------------------------------------ |:------------- |
+|:------|:---------|:-------------------------------------------|:--------------|
 | 1     | `uint64` | Message code: **must** have a value of `5` | 1 byte        |
 | 2     | `bytes`  | Encryption handle                          | 8 bytes       |
 | 3     | `bytes`  | Sender ephemeral session public key        | 32 bytes      |
@@ -355,7 +357,7 @@ message.
 The sending node **must** know at least a partial Node ID to search the DHT for.
 
 | Field | Type     | Description                                 | Length   |
-|:----- |:-------- |:------------------------------------------- |:-------- |
+|:------|:---------|:--------------------------------------------|:---------|
 | 1     | `uint64` | Message code: **must** have a value of `6`  | 1 byte   |
 | 2     | `coords` | Sender coordinates                          | Variable |
 | 3     | `bytes`  | Known bytes of target Node ID to search for | Variable |
@@ -370,7 +372,7 @@ A response may contain more than one set of target candidates, therefore the
 fields n<sub>1</sub> and n<sub>2</sub> may be repeated multiple times.
 
 | Field         | Type     | Description                                | Length   |
-|:------------- |:-------- |:------------------------------------------ |:-------- |
+|:--------------|:---------|:-------------------------------------------|:---------|
 | 1             | `uint64` | Message code: **must** have a value of `7` | 1 byte   |
 | 2             | `coords` | Sender coordinates                         | 8 bytes  |
 | 3             | `bytes`  | Known bytes of target Node ID searched for | 64 bytes |
@@ -402,7 +404,7 @@ and all nodes have received a switch update that contains `n` number of
 signatures, where `n` is the number of hops from the node to the root.
 
 | Field         | Type     | Description                                | Length        |
-|:------------- |:-------- |:------------------------------------------ |:------------- |
+|:--------------|:---------|:-------------------------------------------|:--------------|
 | 1             | `uint64` | Message code: **must** have a value of `3` | 1 byte        |
 | 2             | `bytes`  | Root node public signing key               | 32 bytes      |
 | 3             | `uint64` | Timestamp                                  | 1 to 10 bytes |
@@ -685,3 +687,114 @@ calculated between node `A` and node `B` is 5 hops.
 
 Sessions are a cryptographic agreement between two nodes to allow the exchange
 of end-to-end encrypted traffic.
+
+### Initiating a session
+
+In order to open a session with a remote node, a node **must** know the
+destination coordinates in order to send a session ping. If the destination
+coordinates are not already known, the node **should** start a DHT search and
+wait for the response first.
+
+Once the coordinates are known, the node **must** generate and store the
+following:
+
+1. A set of ephemeral `curve25519` encryption keys, which will be used to
+   generate the shared `curve25519` session key
+1. An 8-byte session handler, which uniquely identifies the session locally
+
+Note that a node **should not** reuse `curve25519` encryption keys across
+sessions, nor should the permanent node encryption keys be used for session
+traffic.
+
+The node then **must** send a session ping to the remote side containing:
+
+1. The locally-generated session handle
+1. The locally-generated public ephemeral encryption key
+1. A timestamp showing the time that the session ping was sent
+1. The coordinates of the current node
+1. The maximum supported session MTU size in bytes (which **should** be a value
+   greater than or equal to 1280, and less than or equal to 65535).
+
+### Responding to a session
+
+At any time, a node **may** receive a session ping from another node on the
+network. The session ping **may** belong to an existing session, or it **may**
+be from a node from which no session is currently open.
+
+If the session ping contains an unknown handle, the node **must** treat the
+session ping as an incoming request to open a new session.
+
+However, it is important to note that a node is not obliged to respond to an
+initial session ping if it does not wish to open a session with that node and
+therefore **may not** send a session pong in response. An example of this may
+include whitelisting sessions based on the public encryption key in the protocol
+header.
+
+If the session handle is known and belongs to an existing open session, the node
+**should** examine the session ping to see if the maximum supported session MTU
+has changed and update the local session record if so. In response to a session
+ping for a known session, a node **must** respond with a session pong.
+
+Before sending a session pong in response to a session ping, the node **must**
+generate and store the following:
+
+1. A set of ephemeral `curve25519` encryption keys, which will be used to
+   generate the shared `curve25519` session key
+1. An 8-byte session handler, which uniquely identifies the session locally
+
+Importantly, the session handlers generated on each node **may not** be the
+same, however, both nodes are required to store the handler chosen by the remote
+side. Once these elements are generated, the session pong **must** contain:
+
+1. The locally-generated session handle
+1. The locally-generated public ephemeral encryption key
+1. A timestamp showing the time that the session pong was sent
+1. The coordinates of the current node
+1. The maximum supported session MTU size in bytes, which **should** be a value
+   greater than or equal to 1280, and less than or equal to 65535
+
+### Session establishment
+
+A session is established once the initiating node has received a session pong,
+and the responding node has sent a session pong. At this point, both nodes are
+aware of each other's public ephemeral encryption keys, allowing each node to
+compute the shared ephemeral session key, and the session handle on each side.
+
+For all sessions, a node **must** store:
+
+1. The shared ephemeral session key, as computed from both the local and the
+   received public ephemeral encryption keys in the received session ping/pong
+1. The local session handle, as generated locally
+1. The remote session handle, as provided in the received session ping/pong
+1. The local maximum supported MTU size of the session, as configured locally
+1. The remote maximum supported MTU size of the session, as provided in the
+   received session ping/pong
+
+A node **must not** consider a session to be established if it has chosen to not
+respond to a session ping, or if a session pong has not been received in
+response to a session ping.
+
+The shared `curve25519` session key is computed from both the local and the
+remote public ephemeral encryption keys. Assuming that the key exchange from the
+session pings/pongs has taken place successfully, the local and the remote node
+should arrive at the same computed shared key, which both nodes **must** keep
+secret.
+
+### No response
+
+If no session pong is received from the remote side, the node that sent the
+original session ping **may** resend the original session ping at an interval
+that **should not** be more frequent than once per second, until it becomes
+obvious that the remote node is not responding either deliberately, or because
+it is offline.
+
+### Traffic exchange
+
+Once a session is open, a node can begin sending traffic over the session. To do
+so, the traffic should be encrypted using the ephemeral shared session key and
+encapsulated in a traffic packet, before being sent to the target coordinates.
+
+Critically, the contents of an individual traffic message **must not** exceed
+the maximum supported MTU size of the session. If a node receives a traffic
+message that exceeds the maximum supported MTU size of the session, the node
+**should** drop the message.
