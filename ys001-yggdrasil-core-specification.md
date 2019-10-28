@@ -317,9 +317,6 @@ When establishing a new session, a node **must** generate an ephemeral set of
 ephemeral session public key is then sent to the remote side and is used to
 agree a shared session key, with which all session traffic is encrypted.
 
-Although represented as a `varu64`, the maximum supported session MTU (field 6)
-**should not** exceed a value of `65535` or be below a value of `1280`.
-
 | Field | Type     | Description                                | Length        |
 |:------|:---------|:-------------------------------------------|:--------------|
 | 1     | `varu64` | Message code: **must** have a value of `4` | 1 byte        |
@@ -343,9 +340,6 @@ node **must** generate an ephemeral set of `curve25519` session keys, which are
 kept for the lifetime of the session. The ephemeral session public key is then
 sent to the remote side and is used to agree a shared session key, with which
 all session traffic is encrypted.
-
-Although represented as a `varu64`, the maximum supported session MTU (field 6)
-**should not** exceed a value of `65535` or be below a value of `1280`.
 
 | Field | Type     | Description                                | Length        |
 |:------|:---------|:-------------------------------------------|:--------------|
@@ -742,8 +736,7 @@ The node then **must** send a session ping to the remote side containing:
 1. The locally-generated public ephemeral encryption key
 1. A timestamp showing the time that the session ping was sent
 1. The coordinates of the current node
-1. The maximum supported session MTU size in bytes (which **should** be a value
-   greater than or equal to 1280, and less than or equal to 65535).
+1. The maximum supported session MTU size in bytes
 
 ### Responding to a session
 
@@ -780,8 +773,7 @@ side. Once these elements are generated, the session pong **must** contain:
 1. The locally-generated public ephemeral encryption key
 1. A timestamp showing the time that the session pong was sent
 1. The coordinates of the current node
-1. The maximum supported session MTU size in bytes, which **should** be a value
-   greater than or equal to 1280, and less than or equal to 65535
+1. The maximum supported session MTU size in bytes
 
 ### Session establishment
 
@@ -824,7 +816,16 @@ Once a session is open, a node can begin sending traffic over the session. To do
 so, the traffic should be encrypted using the ephemeral shared session key and
 encapsulated in a traffic packet, before being sent to the target coordinates.
 
-Critically, the contents of an individual traffic message **must not** exceed
-the maximum supported MTU size of the session. If a node receives a traffic
-message that exceeds the maximum supported MTU size of the session, the node
-**should** drop the message.
+### Session MTU
+
+During the exchange of session pings and session pongs to set up a session, both
+nodes send their maximum supported MTU size for the session to the other node.
+Once a round-trip including both a session ping and a session pong have taken
+place, both nodes will know what the maximum supported value is for both nodes.
+
+The agreed maximum supported MTU of the session **must** equal the lowest of the
+two exchanged values.
+
+The contents of an individual traffic message **must not** exceed this agreed
+size. If a node receives a traffic message that exceeds the maximum agreed size
+for the session, the node **should** drop the message.
