@@ -1,8 +1,8 @@
 # YS001: Yggdrasil Core Specification
 
-| ID    | Name                         | Version | Status | Authors        | Date        |
-|:------|:-----------------------------|:--------|:-------|:---------------|:------------|
-| YS001 | Yggdrasil Core Specification | 0.1     | Draft  | Neil Alexander | 28-Oct-2019 |
+| ID    | Name                         | Version | Status | Authors                  | Date        |
+|:------|:-----------------------------|:--------|:-------|:-------------------------|:------------|
+| YS001 | Yggdrasil Core Specification | 0.1     | Draft  | Neil Alexander, Arceliar | 28-Oct-2019 |
 
 ## About this document
 
@@ -568,6 +568,14 @@ The DHT used by Yggdrasil is derived from Chord, where each node in the network
 
 Nodes are identified in the DHT by their Node ID.
 
+In addition, nodes **should** maintain a chord "finger table" of approximately
+`O(logn)` other nodes in the ring, at points on the ring which ensure that searches
+should probabilistically require only `O(logn)` iterations of DHT requests/responses.
+This **may** be approximated by including a node's immediate successor in the ring,
+and any other successors which are encountered and are strictly closer via the tree
+metric than any successors already tracked, and likewise in the direction of the
+predecessor.
+
 ### Requests
 
 At any point, a node may send a DHT request for a given Node ID. The DHT request
@@ -593,21 +601,29 @@ containing:
    referring to both the closest and the furthest away nodes that the node knows
    about to the target Node ID
 
+In this context, "closest" is defined as the successor of the target Node ID
+(the node which appears at or immediately after the target Node ID in the ring),
+and "furthest" is defined to be the predecessor (the node which appears immediately
+before the target in the ring). This definition of "closest" is required to ensure
+that a partial Node ID with unknown bits set to 0 is owned by a node with the full
+Node ID, which would not be the case if the keyspace distance metric was reversed.
+Nodes **may** search with the keyspace distance metric reversed, but **must**
+set unknown bits of the Node ID to `1` in such a case.
+
 ### Searches
 
 To look up a specific node on the network, a search is started by sending a DHT
 request targeting a specific Node ID.
 
 The requesting node **must** keep a record of each Node ID that is being
-searched for, until a time that either the search has completed successfully or
-a timeout has been reached. This will enable the node to determine whether any
-DHT responses received are in response to a valid search.
+searched for, until a time that either the search has completed, either by
+contacting a node with a key which matches the known bits of the target Node ID
+or by running out of nodes to check.
 
 The node will then:
 
-1. Receive a DHT response containing information about one or more closer nodes
+1. Receive a DHT response containing information about zero or more closer nodes
    to the target Node ID
-1. Receive a DHT response containing information about the target Node ID
 1. Receive no response at all, at which point the search should time out
 
 Once the requesting node receives the DHT response from the responding node, the
@@ -617,14 +633,28 @@ search that we initiated. If it does not match an existing search, the response
 
 If the search is valid, the node **must** then check if the Node ID generated
 from the sender's public encryption key in the protocol message headers matches
-the searched target Node ID. If it does, the search is considered to be
+the searched target Node ID (after applying a bitmask to account for any
+unknown bits of the Node ID). If it does, the search is considered to be
 completed and the node **should not** send any additional search requests
-related to this search.
+related to this search. If not, then the node which handled the request **must**
+be added to a list of visited nodes, so that it can be ignored if included in
+any future responses. Any information about closer nodes, included in the response,
+**must** be checked to confirm that they are closer to the target Node ID than the
+request handler. Any nodes which satisfy this condition and do not appear on the
+list of nodes already visited in this search **should** be added to a list of
+known nodes to contact in later search iterations.
 
-Otherwise, this process should repeat iteratively, by sending additional DHT
-requests to any newly learned closer nodes about the target Node ID, until
-either no closer results are returned (a dead end has been reached) or the exact
-Node ID has been matched.
+After any response from a node which is not the target of a search, or after a
+timeout in the event of no response, the node **must** select the node from the
+list of unchecked destinations which is closest to the target Node ID, send a
+request to that node, and remove the node from the list. This process **must**
+repeat iteratively until either the a node matching the known bits of the target
+Node ID is contacted, or until the list of nodes to visit is exhaused and a timeout
+passes (to give the last node a chance to respond).
+
+When a search is initialized, the list of visited nodes **must** be empty, and the
+list of nodes to visit in later search iterations **must** be filled by the nodes
+closest to the destination which are already present in the searching node's DHT.
 
 ### Caching
 
