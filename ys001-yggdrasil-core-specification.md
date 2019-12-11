@@ -116,7 +116,7 @@ The Yggdrasil protocol defines the following base types:
 
 #### Unsigned 64-bit integers
 
-All unsigned integers on the wire are encoded as `varu64` which, with
+All unsigned integers on the wire are encoded as big-endian `varu64` which, with
 variable-length encoding, encode into a `bytes` array of at most 10 bytes. This
 variable-length encoding mechanism ensures that small values will use less bytes
 on the wire, and that in future, larger integer types can be used if
@@ -126,18 +126,33 @@ Each byte is composed of 8 bits where:
 
 1. The most-significant bit (MSB) is a "continuation byte" - set to 1 if there
    is another byte following this one, or set to 0 if this is the last byte
-1. The remaining 7 bits contain the next 7 bits of the `varu64` value at a time
+1. The remaining 7 bits contain the next 7 least-significant bits of the source
+   `varu64` value
 
-To encode a `varu64`, take 7 bits of the value at a time and place them into
-the least-significant 7 bits of your target byte, and then set the
-most-significant bit to 1 if there are more bits to come in a future byte.
-Repeat with additional bytes until you have encoded all bits of the original
-`varu64`.
+##### Encoding
 
-To decode a `varu64`, this process should be reversed, repeating through each
-byte up until the most-significant bit has a value of 0, denoting the end of the
-sequence. For a `varu64`, the implementation **must not** process any extraneous
-bytes above the maximum 10 bytes.
+To encode a `varu64`, start with an empty byte array. Take the least-significant
+7 bits of the source value and place them into the least-significant 7 bits of
+your first byte, and then set the most-significant bit of the first byte to 0.
+
+Repeat the process by right-shifting 7 bytes from the source value. If the
+shifted source value is still greater than zero, append the next byte by taking
+the next 7 least-significant bits and set the most-significant bit to 1.
+
+The resultant bytes will be big-endian individually, however the order of the
+byte array will be reversed as the beginning of the array now contains the
+source value's least-significant bits. Therefore, to complete the encoding, the
+order of the bytes must be reversed (preserving the order of the bits in each
+byte) so that the entire sequence is big-endian and the last byte in the
+sequence now has the zero most-significant bit.
+
+##### Decoding
+
+To decode a `varu64`, start with a target zero-value unsigned 64-bit integer.
+Take the 7 least-significant bits of the first byte and copy them onto the 7
+least-significant bits of the target. If the most-significant bit of the byte is
+1, left-shift the target value by 7 bits and then move onto the next byte,
+repeating this process until the most-significant bit is 0.
 
 #### Signed 64-bit integers
 
@@ -568,13 +583,18 @@ The DHT used by Yggdrasil is derived from Chord, where each node in the network
 
 Nodes are identified in the DHT by their Node ID.
 
-In addition, nodes **should** maintain a chord "finger table" of approximately
-`O(logn)` other nodes in the ring, at points on the ring which ensure that searches
-should probabilistically require only `O(logn)` iterations of DHT requests/responses.
-This **may** be approximated by including a node's immediate successor in the ring,
-and any other successors which are encountered and are strictly closer via the tree
-metric than any successors already tracked, and likewise in the direction of the
-predecessor.
+In addition, nodes **should** maintain a Chord "finger table" of approximately
+`O(logn)` other nodes in the ring, at points on the ring which ensure that
+searches should probabilistically require only `O(logn)` iterations of DHT
+requests/responses. This **may** be approximated by including a node's immediate
+successor in the ring, and any other successors which are encountered and are
+strictly closer via the tree metric than any successors already tracked, and
+likewise in the direction of the predecessor.
+
+### Bootstrap
+
+When a node starts and one or more peering connections are established, the DHT
+should bootstrap.
 
 ### Requests
 
@@ -604,11 +624,13 @@ containing:
 In this context, "closest" is defined as the successor of the target Node ID
 (the node which appears at or immediately after the target Node ID in the ring),
 and "furthest" is defined to be the predecessor (the node which appears immediately
-before the target in the ring). This definition of "closest" is required to ensure
-that a partial Node ID with unknown bits set to 0 is owned by a node with the full
-Node ID, which would not be the case if the keyspace distance metric was reversed.
-Nodes **may** search with the keyspace distance metric reversed, but **must**
-set unknown bits of the Node ID to `1` in such a case.
+before the target in the ring).
+
+This definition of "closest" is required to ensure that a partial Node ID with
+unknown bits set to 0 is owned by a node with the full Node ID, which would not
+be the case if the keyspace distance metric was reversed. Nodes **may** search
+with the keyspace distance metric reversed, but **must** set unknown bits of the
+Node ID to `1` in such a case.
 
 ### Searches
 
@@ -634,27 +656,32 @@ search that we initiated. If it does not match an existing search, the response
 If the search is valid, the node **must** then check if the Node ID generated
 from the sender's public encryption key in the protocol message headers matches
 the searched target Node ID (after applying a bitmask to account for any
-unknown bits of the Node ID). If it does, the search is considered to be
-completed and the node **should not** send any additional search requests
-related to this search. If not, then the node which handled the request **must**
-be added to a list of visited nodes, so that it can be ignored if included in
-any future responses. Any information about closer nodes, included in the response,
-**must** be checked to confirm that they are closer to the target Node ID than the
-request handler. Any nodes which satisfy this condition and do not appear on the
-list of nodes already visited in this search **should** be added to a list of
-known nodes to contact in later search iterations.
+unknown bits of the Node ID).
+
+If it does, the search is considered to be completed as the response has come
+directly from the node that we were searching for. From this point, the node
+**should not** send any additional search requests related to this search.
+
+If not, then the node which handled the request **must** be added to a list of
+visited nodes, so that it can be ignored if included in any future responses.
+Any information about closer nodes, included in the response, **must** be
+checked to confirm that they are closer to the target Node ID than the request
+handler. Any nodes which satisfy this condition and do not appear on the list of
+nodes already visited in this search **should** be added to a list of known
+nodes to contact in later search iterations.
 
 After any response from a node which is not the target of a search, or after a
 timeout in the event of no response, the node **must** select the node from the
 list of unchecked destinations which is closest to the target Node ID, send a
 request to that node, and remove the node from the list. This process **must**
 repeat iteratively until either the a node matching the known bits of the target
-Node ID is contacted, or until the list of nodes to visit is exhaused and a timeout
-passes (to give the last node a chance to respond).
+Node ID is contacted, or until the list of nodes to visit is exhausted and a
+timeout passes (to give the last node a chance to respond).
 
-When a search is initialized, the list of visited nodes **must** be empty, and the
-list of nodes to visit in later search iterations **must** be filled by the nodes
-closest to the destination which are already present in the searching node's DHT.
+When a search is initialised, the list of visited nodes **must** be empty, and
+the list of nodes to visit in later search iterations **must** be filled by the
+nodes closest to the destination which are already present in the searching
+node's DHT.
 
 ### Caching
 
