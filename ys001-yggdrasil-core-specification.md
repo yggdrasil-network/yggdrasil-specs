@@ -709,17 +709,24 @@ of other network nodes. This happens if:
 ### Next-hop selection
 
 When a message is received for forwarding, the node **must** make a decision as
-to which node to forward onto next, except where the destination coordinates of
-a message are equal to the coordinates of the current node, in which case the
-message is considered to have been delivered.
+to which node to forward onto next.
 
-The node should evaluate each direct peering and determine which peering will
+The node **must** evaluate each direct peering and determine which peering will
 take the message closest to the target destination coordinates. This is done by
 calculating the metric distance between the peer's coordinates and the target
 coordinates, selecting the peering which returns the shortest distance.
 
-A node **must not** forward traffic to any node which is not closer to the
-destination.
+In order to prevent routing loops, a strict distance rule applies. A node **must
+not** forward traffic to any other node which is not closer to the destination
+coordinates in metric space.
+
+Note that traffic destined for the current node will fail the distance rule,
+therefore in this scenario, the node **should** attempt to decrypt the message
+using its own keys and handle it as if it were destined for that node.
+
+If the above distance rule fails and decryption also fails, then it is safe to
+assert that the packet was not destined for that node and therefore **must**
+drop the packet.
 
 ### Distance metric
 
