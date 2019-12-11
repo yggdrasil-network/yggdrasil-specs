@@ -93,10 +93,9 @@ the "highest" value, e.g. the highest number of leading one bits set.
 
 The Yggdrasil protocol is a binary protocol. Every message has one or more
 fields, matching one of the below base types. The first bytes of every message
-represent a `varu64` (see below) which defines the message type code, although
-this is typically compressed down into a single byte. The structure of the
-message following that message type code must comply with that message type as
-defined.
+represent a `varu64` (see below) which defines the message type code. The
+structure of the message following that message type code must comply with that
+message type as defined.
 
 The protocol does not otherwise frame fields - that is, there are no markers
 within a message which denote the start or end of a given field. It is the
