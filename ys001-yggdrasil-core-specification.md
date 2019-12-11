@@ -126,7 +126,7 @@ Each byte is composed of 8 bits where:
 
 1. The most-significant bit (MSB) is a "continuation byte" - set to 1 if there
    is another byte following this one, or set to 0 if this is the last byte
-1. The remaining 7 bits contain the next 7 least-significant bits of the source
+2. The remaining 7 bits contain the next 7 least-significant bits of the source
    `varu64` value
 
 ##### Encoding
@@ -183,8 +183,8 @@ coordinates is a three-step process:
 
 1. Encode each `varu64` element of the coordinates into a `bytes` array, as
    above
-1. Concatenate all resultant `bytes` arrays into one contiguous `bytes` array
-1. Prefix the contiguous `bytes` array with a `varu64` which contains the
+2. Concatenate all resultant `bytes` arrays into one contiguous `bytes` array
+3. Prefix the contiguous `bytes` array with a `varu64` which contains the
    final array length
 
 To decode `coords`, perform the same process in reverse:
@@ -192,9 +192,9 @@ To decode `coords`, perform the same process in reverse:
 1. Decode the beginning of the bytes array as a `varu64` which will show the
    length in bytes for this set of coordinates, advancing by the number of bytes
   used by the `varu64` length field
-1. Continue to decode the next bytes as a `varu64`, appending the result to the
+2. Continue to decode the next bytes as a `varu64`, appending the result to the
    discovered coordinates
-1. Continue through the bytes until the initial length value has been reached
+3. Continue through the bytes until the initial length value has been reached
 
 ### Message types
 
@@ -210,7 +210,7 @@ The following top-level message scopes are defined:
 
 1. **Global**: The node **must** forward this message type onto other nodes as
    specified in the destination coordinates
-1. **Link**: The node **must not** forward this message to any other nodes
+2. **Link**: The node **must not** forward this message to any other nodes
    outside of the current link
 
 Additional message types may be defined by later extension specifications.
@@ -297,7 +297,7 @@ The payload (field 3) is encrypted **twice**:
 
 1. The inner layer, encrypted using ephemeral `curve25519` keys, ensures that
    the message has not been replayed and for forward secrecy
-1. The outer layer, encrypted using the node's permanent `curve25519` keys,
+2. The outer layer, encrypted using the node's permanent `curve25519` keys,
    ensures that the message has come from the node that we expect it to come
    from, and has not been captured and replayed from another network node in an
    attempt to impersonate another node
@@ -322,10 +322,10 @@ message.
 A session ping is sent in response to the following conditions:
 
 1. A node wishes to establish a new session with a remote node
-1. A session is already established with a remote node and one of the following
+2. A session is already established with a remote node and one of the following
    conditions occurs:
    1. The node's coordinates have changed
-   1. The local maximum supported session MTU has changed
+   2. The local maximum supported session MTU has changed
 
 When establishing a new session, a node **must** generate an ephemeral set of
 `curve25519` session keys, which are kept for the lifetime of the session. The
@@ -444,12 +444,12 @@ outlined below:
 peering **must** be retransmitted in the event that a packet (or any fragments
 of the packet) are lost, mangled or otherwise damaged in transit.
 
-1. **Ordered delivery of packets**: All packets that traverse a peering, whether
+2. **Ordered delivery of packets**: All packets that traverse a peering, whether
 they are protocol-level messages or network forwarded traffic **must** be
 delivered in-order. This is necessary so that routing loops do not occur as a
 result of protocol messages.
 
-1. **Fragmented delivery of packets**: The connection **must** be able to
+3. **Fragmented delivery of packets**: The connection **must** be able to
 fragment a larger packet into smaller packets before being sent to a peered
 node. This is required as Yggdrasil may be forwarding packets that are larger
 than a given link's maximum transmission unit (MTU) size.
@@ -525,7 +525,7 @@ other directly connected peers.
 The node **must** remain blacklisted until one of the two conditions occurs:
 
 1. A new announcement is received from the root node that is valid
-1. A new announcement is received from another node that is a better candidate
+2. A new announcement is received from another node that is a better candidate
    to be root, e.g. by possessing a stronger Tree ID
 
 ### Parent selection
@@ -542,7 +542,7 @@ node.
 When evaluating whether a root timestamp is eligible for parent selection:
 
 1. All signatures from the peer up to the root node **must** be valid
-1. The path from the peer up to the root node **must not** contain any loops,
+2. The path from the peer up to the root node **must not** contain any loops,
    e.g. the same signing keys may not appear twice within the same timestamp
    update message
 
@@ -578,8 +578,8 @@ The DHT used by Yggdrasil is derived from Chord, where each node in the network
 **must** maintain a list of DHT neighbours including:
 
 1. The direct predecessor of the node in the DHT
-1. The direct successor of the node in the DHT
-1. All directly connected peers
+2. The direct successor of the node in the DHT
+3. All directly connected peers
 
 Nodes are identified in the DHT by their Node ID.
 
@@ -602,7 +602,7 @@ At any point, a node may send a DHT request for a given Node ID. The DHT request
 **must** contain the following:
 
 1. The current coordinates of the requesting node
-1. The known bits of the target Node ID (where all unknown bits **must** be set
+2. The known bits of the target Node ID (where all unknown bits **must** be set
    to `0`)
 
 The DHT request is then sent to the locally-known/cached DHT neighbour that has
@@ -616,8 +616,8 @@ Having received a DHT request, a node **must** return a DHT response
 containing:
 
 1. The coordinates and public encryption key of the responding node
-1. The target Node ID, exactly as it was sent in the original DHT request
-1. Zero or more sets of candidate public encryption keys and coordinates,
+2. The target Node ID, exactly as it was sent in the original DHT request
+3. Zero or more sets of candidate public encryption keys and coordinates,
    referring to both the closest and the furthest away nodes that the node knows
    about to the target Node ID
 
@@ -646,7 +646,7 @@ The node will then:
 
 1. Receive a DHT response containing information about zero or more closer nodes
    to the target Node ID
-1. Receive no response at all, at which point the search should time out
+2. Receive no response at all, at which point the search should time out
 
 Once the requesting node receives the DHT response from the responding node, the
 requesting node **must** verify that the Node ID in the DHT response matches a
@@ -703,7 +703,7 @@ All nodes in an Yggdrasil network have the capacity to forward traffic on behalf
 of other network nodes. This happens if:
 
 1. The node has peering connections to more than one node
-1. The current node is on an optimal path between two other network nodes which
+2. The current node is on an optimal path between two other network nodes which
    are exchanging traffic
 
 ### Next-hop selection
@@ -734,11 +734,11 @@ To calculate the distance in hops between two nodes:
 
 1. Find the node which shares the most common leading coordinate elements with
    both node `A` and node `B`
-1. Calculate the distance from node `A` to node `L` by subtracting the length
+2. Calculate the distance from node `A` to node `L` by subtracting the length
    of node `L`'s coordinates from the length of node `A`'s coordinates
-1. Calculate the distance from node `B` to node `L` by subtracting the length
+3. Calculate the distance from node `B` to node `L` by subtracting the length
    of node `L`'s coordinates from the length of node `B`'s coordinates
-1. Add the two distances together to find the total distance
+4. Add the two distances together to find the total distance
 
 For example, in the case where node `A` has coordinates `[1 4 2 6 4 2]` and
 node `B` has coordinates `[1 4 2 9 6]`, the common ancestor is the node `L` at
@@ -761,9 +761,9 @@ implementation **should** consider one or more of the following factors when
 deterministically selecting the best peer to forward to:
 
 1. The uptime of each peering
-1. The relative latency of each peering, based on which peerings deliver switch
+2. The relative latency of each peering, based on which peerings deliver switch
    update messages from the root node first
-1. The average utilisation of each peering
+3. The average utilisation of each peering
 
 Alternatively, a non-deterministic approach **may** be used, e.g. by selecting
 from the candidate peers randomly, although doing so may have unintended
@@ -788,7 +788,7 @@ following:
 
 1. A set of ephemeral `curve25519` encryption keys, which will be used to
    generate the shared `curve25519` session key
-1. An 8-byte session handler, which uniquely identifies the session locally
+2. An 8-byte session handler, which uniquely identifies the session locally
 
 Note that a node **should not** reuse `curve25519` encryption keys across
 sessions, nor should the permanent node encryption keys be used for session
@@ -797,10 +797,10 @@ traffic.
 The node then **must** send a session ping to the remote side containing:
 
 1. The locally-generated session handle
-1. The locally-generated public ephemeral encryption key
-1. A timestamp showing the time that the session ping was sent
-1. The coordinates of the current node
-1. The maximum supported session MTU size in bytes
+2. The locally-generated public ephemeral encryption key
+3. A timestamp showing the time that the session ping was sent
+4. The coordinates of the current node
+5. The maximum supported session MTU size in bytes
 
 ### Responding to a session
 
@@ -827,17 +827,17 @@ generate and store the following:
 
 1. A set of ephemeral `curve25519` encryption keys, which will be used to
    generate the shared `curve25519` session key
-1. An 8-byte session handler, which uniquely identifies the session locally
+2. An 8-byte session handler, which uniquely identifies the session locally
 
 Importantly, the session handlers generated on each node **may not** be the
 same, however, both nodes are required to store the handler chosen by the remote
 side. Once these elements are generated, the session pong **must** contain:
 
 1. The locally-generated session handle
-1. The locally-generated public ephemeral encryption key
-1. A timestamp showing the time that the session pong was sent
-1. The coordinates of the current node
-1. The maximum supported session MTU size in bytes
+2. The locally-generated public ephemeral encryption key
+3. A timestamp showing the time that the session pong was sent
+4. The coordinates of the current node
+5. The maximum supported session MTU size in bytes
 
 ### Session establishment
 
@@ -850,10 +850,10 @@ For all sessions, a node **must** store:
 
 1. The shared ephemeral session key, as computed from both the local and the
    received public ephemeral encryption keys in the received session ping/pong
-1. The local session handle, as generated locally
-1. The remote session handle, as provided in the received session ping/pong
-1. The local maximum supported MTU size of the session, as configured locally
-1. The remote maximum supported MTU size of the session, as provided in the
+2. The local session handle, as generated locally
+3. The remote session handle, as provided in the received session ping/pong
+4. The local maximum supported MTU size of the session, as configured locally
+5. The remote maximum supported MTU size of the session, as provided in the
    received session ping/pong
 
 A node **must not** consider a session to be established if it has chosen to not
