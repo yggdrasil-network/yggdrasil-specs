@@ -340,7 +340,7 @@ agree a shared session key, with which all session traffic is encrypted.
 | Field | Type     | Description                                | Length        |
 |:------|:---------|:-------------------------------------------|:--------------|
 | 1     | `varu64` | Message code: **must** have a value of `4` | 1 byte        |
-| 2     | `bytes`  | Encryption handle                          | 8 bytes       |
+| 2     | `bytes`  | Session handle                             | 8 bytes       |
 | 3     | `bytes`  | Sender ephemeral session public key        | 32 bytes      |
 | 4     | `varu64` | Timestamp                                  | 1 to 10 bytes |
 | 5     | `coords` | Sender coordinates                         | Variable      |
@@ -364,7 +364,7 @@ all session traffic is encrypted.
 | Field | Type     | Description                                | Length        |
 |:------|:---------|:-------------------------------------------|:--------------|
 | 1     | `varu64` | Message code: **must** have a value of `5` | 1 byte        |
-| 2     | `bytes`  | Encryption handle                          | 8 bytes       |
+| 2     | `bytes`  | Session handle                             | 8 bytes       |
 | 3     | `bytes`  | Sender ephemeral session public key        | 32 bytes      |
 | 4     | `varu64` | Timestamp                                  | 1 to 10 bytes |
 | 5     | `coords` | Sender coordinates                         | Variable      |
@@ -803,7 +803,8 @@ following:
 
 1. A set of ephemeral `curve25519` encryption keys, which will be used to
    generate the shared `curve25519` session key
-2. An 8-byte session handler, which uniquely identifies the session locally
+2. An 8-byte session handler, which **must** be locally unique, to identify the
+   session
 
 Note that a node **should not** reuse `curve25519` encryption keys across
 sessions, nor should the permanent node encryption keys be used for session
@@ -823,8 +824,8 @@ At any time, a node **may** receive a session ping from another node on the
 network. The session ping **may** belong to an existing session, or it **may**
 be from a node from which no session is currently open.
 
-If the session ping contains an unknown handle, the node **must** treat the
-session ping as an incoming request to open a new session.
+If the session ping contains an unknown session handle, the node **must** treat
+the session ping as an incoming request to open a new session.
 
 However, it is important to note that a node is not obliged to respond to an
 initial session ping if it does not wish to open a session with that node and
@@ -844,8 +845,8 @@ generate and store the following:
    generate the shared `curve25519` session key
 2. An 8-byte session handler, which uniquely identifies the session locally
 
-Importantly, the session handlers generated on each node **may not** be the
-same, however, both nodes are required to store the handler chosen by the remote
+Importantly, the session handles generated on each node **may not** be the
+same, however, both nodes are required to store the handle chosen by the remote
 side. Once these elements are generated, the session pong **must** contain:
 
 1. The locally-generated session handle
@@ -931,4 +932,12 @@ Sessions do not have a specific lifetime.
 A node **may** consider that a session has expired after a period of inactivity,
 e.g. from having received no traffic nor session pings from the remote side
 after a defined interval, at which point the node **should** stop accepting
-future traffic for that session handle.
+future traffic for that session.
+
+### Session Closure
+
+When closing a session, a node **should** remove the association between the
+session handles and the ephemeral shared session key.
+
+The node **must not** send any traffic for a closed session and **must** drop
+any received traffic that no longer matches an active session.
