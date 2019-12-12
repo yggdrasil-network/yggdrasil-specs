@@ -248,20 +248,22 @@ reach its destination.
 This message type **must** only be used to send session traffic. This message
 type **must not** be used to encapsulate Yggdrasil protocol traffic.
 
-The payload (field 5) is encrypted using shared session keys known only to the
-two endpoints of the session. The contents of the payload (field 5) **must not**
-exceed the maximum supported MTU size of the session to which the handle (field
-3) refers.
+The session handle (field 3) identifies the session to which the traffic
+belongs, allowing the remote node to determine which shared session key to use
+to decrypt the payload (field 5), which is encrypted using shared session keys
+known only to the two endpoints of the session.
 
-The handle (field 3) identifies that cryptographic handshake and the nonce
-(field 4) contains the one-time value required by `curve25519` to prevent secret
-key leakage and to add replay resistance to the payload.
+The nonce (field 4) contains the one-time value required by `curve25519` to
+prevent secret key leakage and to add replay resistance to the payload.
+
+The contents of the payload (field 5) **must not** exceed the maximum supported
+MTU size of the session to which the handle (field 3) refers.
 
 | Field | Type     | Description                                | Length   | Encrypted |
 |:------|:---------|:-------------------------------------------|:---------|:----------|
 | 1     | `varu64` | Message code: **must** have a value of `0` | 1 byte   | No        |
 | 2     | `coords` | Target coordinates                         | Variable | No        |
-| 3     | `bytes`  | Encryption handle                          | 8 bytes  | No        |
+| 3     | `bytes`  | Session handle                             | 8 bytes  | No        |
 | 4     | `bytes`  | Encryption nonce                           | 24 bytes | No        |
 | 5     | `bytes`  | Encrypted message payload                  | Variable | Yes       |
 
@@ -271,11 +273,12 @@ A protocol message is a control message which can be sent between any two nodes
 on the network, being forwarded by intermediate nodes if necessary in order to
 reach its destination.
 
-The payload (field 6) is encrypted **once** using session keys known only to the
-two endpoints of the session.
-
 The nonce (field 5) contains the one-time value required by `curve25519` to
 prevent secret key leakage and to add replay resistance to the payload.
+
+The payload (field 6) is encrypted **once** using the destination node's public
+`curve25519` keys with the above nonce. Once decrypted, the payload contains one
+of the below second-level protocol messages.
 
 | Field | Type     | Description                                | Length   | Encrypted |
 |:------|:---------|:-------------------------------------------|:---------|:----------|
@@ -289,8 +292,8 @@ prevent secret key leakage and to add replay resistance to the payload.
 #### Link protocol traffic
 
 A link protocol message is a control message which can be sent between two nodes
-which are directly peered. It is link-scoped - that is, it should never be onto
-another link or peer.
+which are directly peered. It is link-scoped - that is, it should never be
+forwarded onto another link or peer.
 
 The payload (field 3) is encrypted **twice**:
 
@@ -300,6 +303,9 @@ The payload (field 3) is encrypted **twice**:
    ensures that the message has come from the node that we expect it to come
    from, and has not been captured and replayed from another network node in an
    attempt to impersonate another node
+
+Once decrypted, the payload contains one of the below second-level link protocol
+messages.
 
 The nonce (field 2) contains the one-time value required by `curve25519` to
 prevent secret key leakage and to add replay resistance to the payload.
@@ -892,3 +898,7 @@ two exchanged values.
 The contents of an individual traffic message **must not** exceed this agreed
 size. If a node receives a traffic message that exceeds the maximum agreed size
 for the session, the node **should** drop the message.
+
+### Session Expiry
+
+Sessions do not have a specific lifetime.
