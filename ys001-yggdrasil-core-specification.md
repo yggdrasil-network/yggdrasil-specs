@@ -716,18 +716,25 @@ of other network nodes. This happens if:
 When a message is received for forwarding, the node **must** make a decision as
 to which node to forward onto next.
 
-The node **must** evaluate each direct peering and determine which peering will
-take the message closest to the target destination coordinates. This is done by
-calculating the metric distance between the peer's coordinates and the target
-coordinates, selecting the peering which returns the shortest distance.
+The node **must** evaluate each direct peering and determine which peerings will
+take the message closer to the target destination coordinates. This is done by
+calculating the metric distance between the coordinates of each peer from the
+target coordinates and verifying if they are closer to the destination than the
+nodes own coordinates are.
 
 In order to prevent routing loops, a strict distance rule applies. A node **must
 not** forward traffic to any other node which is not closer to the destination
 coordinates in metric space.
 
-Note that traffic destined for the current node will fail the distance rule,
-therefore in this scenario, the node **should** attempt to decrypt the message
-using its own keys and handle it as if it were destined for that node.
+Where feasible, a node **should** forward traffic to the node that is closest.
+However, a node **may** wish to select a node which is closer but not
+necessarily closest in order to avoid poor-quality or congested links.
+
+Traffic destined for the current node will fail the distance rule, therefore in
+this scenario, the node **should** attempt to decrypt the message using its own
+keys and handle it as if it were destined for that node. Note that a node **must
+not** attempt to handle any traffic as if it is destined locally if the distance
+rule has not failed and a peer can take the traffic closer to its destination.
 
 If the above distance rule fails and decryption also fails, then it is safe to
 assert that the packet was not destined for that node and therefore **must**
@@ -883,7 +890,22 @@ it is offline.
 
 Once a session is open, a node can begin sending traffic over the session. To do
 so, the traffic should be encrypted using the ephemeral shared session key and
-encapsulated in a traffic packet, before being sent to the target coordinates.
+encapsulated in a traffic packet, before being sent to the target coordinates
+with the correct remote session handle.
+
+A node **must not** send session traffic to a remote node until a session has
+been established, as it is not possible to know which session handle to use
+until a session has been agreed.
+
+A node **may** wish to buffer traffic during session setup so that it can be
+sent to the remote node once the session is established.
+
+A node can also receive session traffic from a remote node. The session handle
+in the traffic headers is used to determine which shared ephemeral session key
+should be used to decrypt the payload.
+
+In the event that a message is received with a handle that is unknown to the
+node, the node **must** drop the message.
 
 ### Session MTU
 
@@ -902,3 +924,8 @@ for the session, the node **should** drop the message.
 ### Session Expiry
 
 Sessions do not have a specific lifetime.
+
+A node **may** consider that a session has expired after a period of inactivity,
+e.g. from having received no traffic nor session pings from the remote side
+after a defined interval, at which point the node **should** stop accepting
+future traffic for that session handle.
