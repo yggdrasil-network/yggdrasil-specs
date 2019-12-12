@@ -726,9 +726,12 @@ In order to prevent routing loops, a strict distance rule applies. A node **must
 not** forward traffic to any other node which is not closer to the destination
 coordinates in metric space.
 
-Where feasible, a node **should** forward traffic to the node that is closest.
-However, a node **may** wish to select a node which is closer but not
+Where feasible, a node **should** forward traffic to the node which is closest
+to the destination. A node **may** wish to select a node which is closer but not
 necessarily closest in order to avoid poor-quality or congested links.
+
+In the event that multiple peered nodes are the same distance to the destination
+node, a tie-break may be required - see the "Distance tie-break" section below.
 
 Traffic destined for the current node will fail the distance rule, therefore in
 this scenario, the node **should** attempt to decrypt the message using its own
@@ -779,7 +782,7 @@ deterministically selecting the best peer to forward to:
 
 Alternatively, a non-deterministic approach **may** be used, e.g. by selecting
 from the candidate peers randomly, although doing so may have unintended
-negative side-effects on performance and is not recommended.
+negative side-effects on performance.
 
 ---
 
