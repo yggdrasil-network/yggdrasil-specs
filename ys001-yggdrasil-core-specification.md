@@ -231,9 +231,9 @@ second-level message types:
 Encapsulated within a **link protocol message**, Yggdrasil implements the
 following second-level message types:
 
-| Code | Name          | Defined in |
-|:-----|:--------------|:-----------|
-| 3    | Switch update | YS001      |
+| Code | Name                  | Defined in |
+|:-----|:----------------------|:-----------|
+| 3    | Root timestamp update | YS001      |
 
 ### Top-level message formats
 
@@ -403,31 +403,31 @@ fields n<sub>1</sub> and n<sub>2</sub> may be repeated multiple times.
 
 ### Second-level link protocol message formats
 
-#### Switch update
+#### Root timestamp update
 
-A switch update is a message that contains a fully signed path containing all
-hops from the root node down to a given node. Each hop also contains the port
-number that the update was sent to at each node, which allows a node to
-construct its own coordinates.
+A root timestamp update is a message that contains a fully signed path
+containing all hops from the root node down to a given node. Each hop also
+contains the port number that the update was sent to at each node, which allows
+a node to construct its own coordinates.
 
-The root node sends a switch update message to all directly connected peers,
-containing a timestamp and its own signing key and exactly one signature.
+The root node sends a timestamp update message to all directly connected
+peers, containing a timestamp and its own signing key and exactly one signature.
 
 An update message that has been relayed by any non-root nodes will contain
 information about more than one hop, therefore the fields n<sub>1</sub>,
 n<sub>2</sub> and n<sub>3</sub> will be repeated for each hop.
 
-When a node receives a switch update message, the node **must** append its own
-update and then relay to all directly connected peers.
+When a node receives a root timestamp update message, the node **must** append
+its own update and then relay to all directly connected peers.
 
-Since the port number must be specified in the update (which **must** be set to
-the port number that the update will be sent to), this means that the node
-**must** sign the update once for each peer, resulting in each peer receiving a
-unique switch update. 
+Since the port number must be specified in the newly-appended update (which
+**must** be set to the port number that the update will be sent to), this means
+that the node **must** sign the update once for each peer, resulting in each
+peer effectively receiving a unique root timestamp update message.
 
-This process continues until the switch update has flooded the entire network
-and all nodes have received a switch update that contains `n` number of
-signatures, where `n` is the number of hops from the node to the root.
+This process continues until the root timestamp updates have flooded the entire
+network and all nodes have received a root timestamp update that contains `n`
+number of signatures, where `n` is the number of hops from the node to the root.
 
 | Field         | Type     | Description                                | Length        |
 |:--------------|:---------|:-------------------------------------------|:--------------|
@@ -573,6 +573,12 @@ Coordinates are an array of unsigned 64-bit integers. The root node is noted as
 an empty array, e.g. `[]`. All other nodes are noted as an array where each
 element represents a switch port ID on the path from the root of the network
 down to a specific node, e.g. `[3 6 1 24]`.
+
+Once the node has performed parent selection, as above, the chosen root
+timestamp update message is used to derive the coordinates of the current node.
+Each signature in the root timestamp update message has an accompanying port
+number. The coordinates **must** be derived by taking the port numbers in the
+order that the signed updates appear in the root timestamp update message.
 
 ---
 
