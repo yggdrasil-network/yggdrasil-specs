@@ -342,7 +342,7 @@ agree a shared session key, with which all session traffic is encrypted.
 | 1     | `varu64` | Message code: **must** have a value of `4` | 1 byte        |
 | 2     | `bytes`  | Session handle                             | 8 bytes       |
 | 3     | `bytes`  | Sender ephemeral session public key        | 32 bytes      |
-| 4     | `varu64` | Timestamp                                  | 1 to 10 bytes |
+| 4     | `vari64` | Timestamp                                  | 1 to 10 bytes |
 | 5     | `coords` | Sender coordinates                         | Variable      |
 | 6     | `varu64` | Sender maximum supported session MTU       | 1 to 2 bytes  |
 
@@ -366,7 +366,7 @@ all session traffic is encrypted.
 | 1     | `varu64` | Message code: **must** have a value of `5` | 1 byte        |
 | 2     | `bytes`  | Session handle                             | 8 bytes       |
 | 3     | `bytes`  | Sender ephemeral session public key        | 32 bytes      |
-| 4     | `varu64` | Timestamp                                  | 1 to 10 bytes |
+| 4     | `vari64` | Timestamp                                  | 1 to 10 bytes |
 | 5     | `coords` | Sender coordinates                         | Variable      |
 | 6     | `varu64` | Sender maximum supported session MTU       | 1 to 2 bytes  |
 
@@ -429,7 +429,7 @@ signatures, where `n` is the number of hops from the node to the root.
 |:--------------|:---------|:-------------------------------------------|:--------------|
 | 1             | `varu64` | Message code: **must** have a value of `3` | 1 byte        |
 | 2             | `bytes`  | Root node public signing key               | 32 bytes      |
-| 3             | `varu64` | Timestamp                                  | 1 to 10 bytes |
+| 3             | `vari64` | Timestamp                                  | 1 to 10 bytes |
 | n<sub>1</sub> | `bytes`  | Update node public signing key             | 32 bytes      |
 | n<sub>2</sub> | `bytes`  | Update signature                           | 64 bytes      |
 
