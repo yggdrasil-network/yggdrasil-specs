@@ -417,12 +417,13 @@ An update message that has been relayed by any non-root nodes will contain
 information about more than one hop, therefore the fields n<sub>1</sub>,
 n<sub>2</sub> and n<sub>3</sub> will be repeated for each hop.
 
-When a node receives a switch update message, the node **must** create a new
-switch update for each connected switch port, setting the update port number to
-the port that the update will be sent to and adding the node's public signing
-key, and then sign the newly-updated message. The result is that the update for
-each switch port is unique. The updates should then be sent to their respective
-ports.
+When a node receives a switch update message, the node **must** append its own
+update and then relay to all directly connected peers.
+
+Since the port number must be specified in the update (which **must** be set to
+the port number that the update will be sent to), this means that the node
+**must** sign the update once for each peer, resulting in each peer receiving a
+unique switch update. 
 
 This process continues until the switch update has flooded the entire network
 and all nodes have received a switch update that contains `n` number of
