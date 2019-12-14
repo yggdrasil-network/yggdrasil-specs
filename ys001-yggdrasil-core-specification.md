@@ -337,6 +337,10 @@ When establishing a new session, a node **must** generate an ephemeral set of
 ephemeral session public key is then sent to the remote side and is used to
 agree a shared session key, with which all session traffic is encrypted.
 
+The sequence number (field 4) must increase with every session ping. This is to
+prevent replay attacks. A node **must** drop a session ping if it is less than
+or equal to the sequence number of the last session ping from this node.
+
 ##### Fields
 
 | Field | Type     | Description                                | Length        |
@@ -363,6 +367,10 @@ kept for the lifetime of the session. The ephemeral session public key is then
 sent to the remote side and is used to agree a shared session key, with which
 all session traffic is encrypted.
 
+The sequence number (field 4) must increase with every session pong. This is to
+prevent replay attacks. A node **must** drop a session pong if it is less than
+or equal to the sequence number of the last session pong from this node.
+
 ##### Fields
 
 | Field | Type     | Description                                | Length        |
@@ -381,6 +389,9 @@ coordinates of a remote node. It **must** be encapsulated within a protocol
 message.
 
 The sending node **must** know at least a partial Node ID to search the DHT for.
+The Node ID (field 2) is variable-length and the node **must not** include any
+bytes of the Node ID which are not known at the time that the search is
+initiated.
 
 ##### Fields
 
