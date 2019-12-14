@@ -231,9 +231,9 @@ second-level message types:
 Encapsulated within a **link protocol message**, Yggdrasil implements the
 following second-level message types:
 
-| Code | Name                  | Defined in |
-|:-----|:----------------------|:-----------|
-| 3    | Root timestamp update | YS001      |
+| Code | Name        | Defined in |
+|:-----|:------------|:-----------|
+| 3    | Root update | YS001      |
 
 ### Top-level message formats
 
@@ -337,6 +337,8 @@ When establishing a new session, a node **must** generate an ephemeral set of
 ephemeral session public key is then sent to the remote side and is used to
 agree a shared session key, with which all session traffic is encrypted.
 
+##### Fields
+
 | Field | Type     | Description                                | Length        |
 |:------|:---------|:-------------------------------------------|:--------------|
 | 1     | `varu64` | Message code: **must** have a value of `4` | 1 byte        |
@@ -361,6 +363,8 @@ kept for the lifetime of the session. The ephemeral session public key is then
 sent to the remote side and is used to agree a shared session key, with which
 all session traffic is encrypted.
 
+##### Fields
+
 | Field | Type     | Description                                | Length        |
 |:------|:---------|:-------------------------------------------|:--------------|
 | 1     | `varu64` | Message code: **must** have a value of `5` | 1 byte        |
@@ -378,6 +382,8 @@ message.
 
 The sending node **must** know at least a partial Node ID to search the DHT for.
 
+##### Fields
+
 | Field | Type     | Description                                 | Length   |
 |:------|:---------|:--------------------------------------------|:---------|
 | 1     | `varu64` | Message code: **must** have a value of `6`  | 1 byte   |
@@ -393,6 +399,8 @@ within a protocol message.
 A response may contain more than one set of target candidates, therefore the
 fields n<sub>1</sub> and n<sub>2</sub> may be repeated multiple times.
 
+##### Fields
+
 | Field         | Type     | Description                                | Length   |
 |:--------------|:---------|:-------------------------------------------|:---------|
 | 1             | `varu64` | Message code: **must** have a value of `7` | 1 byte   |
@@ -403,37 +411,57 @@ fields n<sub>1</sub> and n<sub>2</sub> may be repeated multiple times.
 
 ### Second-level link protocol message formats
 
-#### Root timestamp update
+#### Root update
 
-A root timestamp update is a message that contains a fully signed path
-containing all hops from the root node down to a given node. Each hop also
-contains the port number that the update was sent to at each node, which allows
-a node to construct its own coordinates.
+A root update is a message that contains a fully signed path containing all hops
+from the root node down to a given node. Each hop also contains the port number
+that the update was sent to at each node, which allows a node to construct its
+own coordinates.
 
-The root node sends a timestamp update message to all directly connected
-peers, containing a timestamp and its own signing key and exactly one signature.
+The root node sends a root update message to all directly connected peers,
+containing a sequence number (see below) and its own signing key and exactly one
+signature.
 
 An update message that has been relayed by any non-root nodes will contain
 information about more than one hop, therefore the fields n<sub>1</sub>,
 n<sub>2</sub> and n<sub>3</sub> will be repeated for each hop.
 
-When a node receives a root timestamp update message, the node **must** append
-its own update and then relay to all directly connected peers.
+When a node receives a valid root update message, the node **must** append its
+own update and then relay to all directly connected peers.
 
 Since the port number must be specified in the newly-appended update (which
 **must** be set to the port number that the update will be sent to), this means
 that the node **must** sign the update once for each peer, resulting in each
-peer effectively receiving a unique root timestamp update message.
+peer effectively receiving a unique root update message.
 
-This process continues until the root timestamp updates have flooded the entire
-network and all nodes have received a root timestamp update that contains `n`
-number of signatures, where `n` is the number of hops from the node to the root.
+This process continues until the root updates have flooded the entire network
+and all nodes have received a root update that contains `n` number of
+signatures, where `n` is the number of hops from the node to the root.
+
+##### Sequence numbers
+
+There are a number of rules surrounding the sequence numbers:
+
+1. The sequence number **must** increase with each root update, therefore a node
+   **must** store the sequence number each time a root update is received for a
+   given root node.
+2. A node **must not** process, sign or distribute a root update
+   if the sequence number is equal to, or lower, than the stored sequence number
+   for that root. This is to prevent root updates from being replayed.
+3. Nodes **should** store the last-known sequence number for each known root, so
+   that old root update messages may not be replayed from an old root.
+
+A node **may** choose to use a monotonic timestamp as the sequence number as a
+simple method to prevent the sequence number rolling back if a node is
+restarted.
+
+##### Fields
 
 | Field         | Type     | Description                                | Length        |
 |:--------------|:---------|:-------------------------------------------|:--------------|
 | 1             | `varu64` | Message code: **must** have a value of `3` | 1 byte        |
 | 2             | `bytes`  | Root node public signing key               | 32 bytes      |
-| 3             | `vari64` | Timestamp                                  | 1 to 10 bytes |
+| 3             | `vari64` | Sequence number                            | 1 to 10 bytes |
 | n<sub>1</sub> | `varu64` | Update port number                         | 1 to 10 bytes |
 | n<sub>2</sub> | `bytes`  | Update node public signing key             | 32 bytes      |
 | n<sub>3</sub> | `bytes`  | Update signature                           | 64 bytes      |
@@ -493,19 +521,23 @@ acting as the root node.
 Since all locator coordinates are relative to the selected root node, it is
 therefore critically important that every node on the network **must** follow
 the same rules when making this decision so that all nodes eventually agree on
-the same root.
+the same root. Without this convergence, a node will not be routable correctly.
 
 The network relies on this convergence to function. Without it, locators will
 not necessarily make sense between nodes and traffic may not be delivered.
 
-### Root timestamp updates
+### Root updates
 
-It is the responsibility of the root node to advertise a timestamp update
-message to all directly connected peers. The update **must** be
-cryptographically signed using the `ed25519` keypair.
+It is the responsibility of the root node to advertise a root update message to
+all directly connected peers. The update **must** be cryptographically signed
+using the `ed25519` keypair.
 
 These updates are then, in turn, flooded to all connected peers at each hop so
-that every node on the network receives the timestamp update.
+that every node on the network receives the root update.
+
+Since root updates contain the flow of port numbers that the update flowed
+through at each node, each root update message received by a node from each
+directly connected peer will be different.
 
 ##### Update interval
 
@@ -514,23 +546,22 @@ this update at least once a minute.
 
 ##### Cool-off period
 
-Nodes on the network **should** ignore any timestamp update that takes place
-within 15 seconds of receiving the last timestamp update. This is known as the
-"cool-off period".
+Nodes on the network **should** ignore any root update that takes place within
+15 seconds of receiving the last root update. This is known as the "cool-off
+period".
 
 The cool-off period is important to reduce bandwidth usage and to prevent the
-network from being flooded by root timestamp updates too often. During the
-cool-off period, root timestamp updates **should not** be relayed to direct
-peers.
+network from being flooded by root updates too often. During the cool-off
+period, root updates **should not** be relayed to direct peers.
 
 ##### Blacklisting
 
 Each node on the network maintains its own root node blacklist. If the root node
-fails to send valid timestamp update messages within the required timeframe,
-other nodes on the network **must** blacklist the root node.
+fails to send valid root update messages within the required timeframe, other
+nodes on the network **must** blacklist the root node.
 
-Root timestamp updates from blacklisted nodes **must not** be retransmitted to
-other directly connected peers.
+Root updates from blacklisted nodes **must not** be retransmitted to other
+directly connected peers.
 
 The node **must** remain blacklisted until one of the two conditions occurs:
 
@@ -544,17 +575,16 @@ Each node on the network selects one of its peers to be the "parent" upon which
 its own coordinates will be derived. That is, the node's coordinates **must** be
 prefixed with the coordinates of the chosen parent node.
 
-Since the node will receive root timestamp updates from all peers, the node
-**should** select the node that relays the root updates quickest as the parent.
-Doing so will help to minimise the latency of the path from the node to the root
-node.
+Since the node will receive root updates from all peers, the node **should**
+select the node that relays the root updates quickest as the parent. Doing so
+will help to minimise the latency of the path from the node to the root node.
 
-When evaluating whether a root timestamp is eligible for parent selection:
+When evaluating whether a root is eligible for parent selection:
 
 1. All signatures from the peer up to the root node **must** be valid
 2. The path from the peer up to the root node **must not** contain any loops,
-   e.g. the same signing keys may not appear twice within the same timestamp
-   update message
+   e.g. the same signing keys may not appear twice within the same root update
+   message
 
 In the event that the peering to the selected "parent" node goes down, the node
 **must** select a new parent and update its own coordinates appropriately. In
@@ -562,7 +592,7 @@ the event that no peerings are connected, the node becomes isolated from the
 rest of the network and **may** become the root node of this new isolated
 network.
 
-### Coordinates
+### Coordinate selection
 
 Coordinates are an ephemeral identifier which represent the switch's location on
 the network graph, relative to the root node. They are not a fixed value and can
@@ -574,11 +604,11 @@ an empty array, e.g. `[]`. All other nodes are noted as an array where each
 element represents a switch port ID on the path from the root of the network
 down to a specific node, e.g. `[3 6 1 24]`.
 
-Once the node has performed parent selection, as above, the chosen root
-timestamp update message is used to derive the coordinates of the current node.
-Each signature in the root timestamp update message has an accompanying port
-number. The coordinates **must** be derived by taking the port numbers in the
-order that the signed updates appear in the root timestamp update message.
+Once the node has performed parent selection, as above, the chosen root update
+message is used to derive the coordinates of the current node. Each signature in
+the root update message has an accompanying port number. The coordinates
+**must** be derived by taking the port numbers in the order that the signed
+updates appear in the chosen root update message.
 
 ---
 
