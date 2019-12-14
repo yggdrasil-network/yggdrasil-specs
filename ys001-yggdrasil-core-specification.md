@@ -344,7 +344,7 @@ agree a shared session key, with which all session traffic is encrypted.
 | 1     | `varu64` | Message code: **must** have a value of `4` | 1 byte        |
 | 2     | `bytes`  | Session handle                             | 8 bytes       |
 | 3     | `bytes`  | Sender ephemeral session public key        | 32 bytes      |
-| 4     | `vari64` | Timestamp                                  | 1 to 10 bytes |
+| 4     | `vari64` | Sequence number                            | 1 to 10 bytes |
 | 5     | `coords` | Sender coordinates                         | Variable      |
 | 6     | `varu64` | Sender maximum supported session MTU       | 1 to 2 bytes  |
 
@@ -370,7 +370,7 @@ all session traffic is encrypted.
 | 1     | `varu64` | Message code: **must** have a value of `5` | 1 byte        |
 | 2     | `bytes`  | Session handle                             | 8 bytes       |
 | 3     | `bytes`  | Sender ephemeral session public key        | 32 bytes      |
-| 4     | `vari64` | Timestamp                                  | 1 to 10 bytes |
+| 4     | `vari64` | Sequence number                            | 1 to 10 bytes |
 | 5     | `coords` | Sender coordinates                         | Variable      |
 | 6     | `varu64` | Sender maximum supported session MTU       | 1 to 2 bytes  |
 
@@ -451,9 +451,8 @@ There are a number of rules surrounding the sequence numbers:
 3. Nodes **should** store the last-known sequence number for each known root, so
    that old root update messages may not be replayed from an old root.
 
-A node **may** choose to use a monotonic timestamp as the sequence number as a
-simple method to prevent the sequence number rolling back if a node is
-restarted.
+A node **may** choose to use a UNIX timestamp as the sequence number as a simple
+method to prevent the sequence number rolling back if a node is restarted.
 
 ##### Fields
 
@@ -855,9 +854,12 @@ The node then **must** send a session ping to the remote side containing:
 
 1. The locally-generated session handle
 2. The locally-generated public ephemeral encryption key
-3. A timestamp showing the time that the session ping was sent
+3. A sequence number, which must increase with every session ping, to prevent
+   replay attacks
 4. The coordinates of the current node
 5. The maximum supported session MTU size in bytes
+
+A node **may** choose to use a UNIX timestamp as the sequence number.
 
 ### Responding to a session
 
@@ -892,9 +894,12 @@ side. Once these elements are generated, the session pong **must** contain:
 
 1. The locally-generated session handle
 2. The locally-generated public ephemeral encryption key
-3. A timestamp showing the time that the session pong was sent
+3. A sequence number, which must increase with every session pong, to prevent
+   replay attacks
 4. The coordinates of the current node
 5. The maximum supported session MTU size in bytes
+
+A node **may** choose to use a UNIX timestamp as the sequence number.
 
 ### Session establishment
 
