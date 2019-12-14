@@ -430,8 +430,7 @@ that the update was sent to at each node, which allows a node to construct its
 own coordinates.
 
 The root node sends a root update message to all directly connected peers,
-containing a sequence number (see below) and its own signing key and exactly one
-signature.
+containing a sequence number and its own signing key and exactly one signature.
 
 An update message that has been relayed by any non-root nodes will contain
 information about more than one hop, therefore the fields n<sub>1</sub>,
@@ -449,22 +448,6 @@ This process continues until the root updates have flooded the entire network
 and all nodes have received a root update that contains `n` number of
 signatures, where `n` is the number of hops from the node to the root.
 
-##### Sequence numbers
-
-There are a number of rules surrounding the sequence numbers:
-
-1. The sequence number **must** increase with each root update, therefore a node
-   **must** store the sequence number each time a root update is received for a
-   given root node.
-2. A node **must not** process, sign or distribute a root update
-   if the sequence number is equal to, or lower, than the stored sequence number
-   for that root. This is to prevent root updates from being replayed.
-3. Nodes **should** store the last-known sequence number for each known root, so
-   that old root update messages may not be replayed from an old root.
-
-A node **may** choose to use a UNIX timestamp as the sequence number as a simple
-method to prevent the sequence number rolling back if a node is restarted.
-
 ##### Fields
 
 | Field         | Type     | Description                                | Length        |
@@ -475,6 +458,41 @@ method to prevent the sequence number rolling back if a node is restarted.
 | n<sub>1</sub> | `varu64` | Update port number                         | 1 to 10 bytes |
 | n<sub>2</sub> | `bytes`  | Update node public signing key             | 32 bytes      |
 | n<sub>3</sub> | `bytes`  | Update signature                           | 64 bytes      |
+
+##### Sequence numbers
+
+There are a number of rules surrounding the sequence numbers in root updates:
+
+1. The sequence number **must** increase with each root update, therefore a node
+   **must** store the sequence number each time a root update is received for a
+   given root node
+2. A node **must not** process, sign or distribute a root update if the sequence
+   number is equal to, or lower, than the stored sequence number for that root -
+   this is to prevent root updates from being replayed
+3. Nodes **should** store the last-known sequence number for each known root, so
+   that old root update messages may not be replayed from an old root
+
+A node **may** choose to use a UNIX timestamp as the sequence number as a simple
+method to prevent the sequence number rolling back if a node is restarted.
+
+##### Update signatures
+
+The update signatures are computed by taking specific fields from the update and
+coalescing them into a byte array. The resultant signature is an `ed25519`
+signature of the byte array.
+
+| Field | Type     | Description                                    | Length        |
+|:------|:---------|:-----------------------------------------------|:--------------|
+| 1     | `bytes`  | Target node public signing key                 | 32 bytes      |
+| 2     | `bytes`  | Root node public signing key                   | 32 bytes      |
+| 3     | `varu64` | Update sequence number                         | 1 to 10 bytes |
+| 4     | `bytes`  | Coordinates (with target port number appended) | Variable      |
+
+As the signature is specifically tailored to the node that it is being sent to,
+fields 1 and 4 **must** contain the public signing key and the port number
+respectively of the node that the update will be sent to.
+
+**TODO:** This section needs work, may not be accurate.
 
 ---
 
@@ -521,6 +539,14 @@ The spanning tree is one of the major underlying components of the Yggdrasil
 design. All nodes on the network participate in the maintenance of the spanning
 tree.
 
+The spanning tree represents the worst-case routing paths and does not contain
+information about all peerings between nodes. Only the parent-child node
+relationships are shown on the spanning tree.
+
+Nodes are encouraged to choose shortcuts when forwarding traffic in cases where
+a direct peer provides a better or more direct path towards the destination than
+the path shown on the spanning tree.
+
 ### Root selection
 
 The root node is typically the node on the network that has the "strongest" Tree
@@ -547,7 +573,16 @@ that every node on the network receives the root update.
 
 Since root updates contain the flow of port numbers that the update flowed
 through at each node, each root update message received by a node from each
-directly connected peer will be different.
+directly connected peer will be different. However, this also allows a node to
+use a chosen root update message in order to derive its own coordinates.
+
+Root updates **must** be sent to all directly connected peers, including the
+chosen parent (see below).
+
+Root update messages received by directly connected peers **should** be used to
+determine the coordinates of all directly connected peers. Note that, by sending
+root updates to all peers, this also enables all directly connected peers,
+including the chosen parent node, to know our coordinates.
 
 ##### Update interval
 
@@ -583,13 +618,13 @@ The node **must** remain blacklisted until one of the two conditions occurs:
 
 Each node on the network selects one of its peers to be the "parent" upon which
 its own coordinates will be derived. That is, the node's coordinates **must** be
-prefixed with the coordinates of the chosen parent node.
+prefixed with the coordinates of the chosen parent node (see below).
 
 Since the node will receive root updates from all peers, the node **should**
 select the node that relays the root updates quickest as the parent. Doing so
 will help to minimise the latency of the path from the node to the root node.
 
-When evaluating whether a root is eligible for parent selection:
+When evaluating whether a root update message is eligible for parent selection:
 
 1. All signatures from the peer up to the root node **must** be valid
 2. The path from the peer up to the root node **must not** contain any loops,
