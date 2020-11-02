@@ -833,8 +833,8 @@ drop the packet.
 
 To calculate the distance in hops between two nodes:
 
-1. Find the node which shares the most common leading coordinate elements with
-   both node `A` and node `B`
+1. Find the node `L` which shares the most common leading coordinate elements
+   with both node `A` and node `B`
 2. Calculate the distance from node `A` to node `L` by subtracting the length
    of node `L`'s coordinates from the length of node `A`'s coordinates
 3. Calculate the distance from node `B` to node `L` by subtracting the length
