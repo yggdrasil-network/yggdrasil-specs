@@ -14,6 +14,11 @@ The following document IDs have been assigned:
 | YS004 | Node Information              | Proposed |
 | YS005 | Local Backpressure Techniques | Proposed |
 
+## Proposals awaiting a document ID
+
+- [Decentralized Service Discovery](decentralized-service-discovery.md) — Proposed;
+  signed service announcements over existing peer connections.
+
 ## Process
 
 All specification proposals, and subsequent modifications to specifications,
