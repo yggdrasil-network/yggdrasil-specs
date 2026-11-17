@@ -17,6 +17,8 @@ All source citations below are pinned to that revision.
 The terms MUST, MUST NOT, SHOULD and MAY express requirements of this proposed
 protocol. The cited implementation is experimental; this document does not claim
 that the protocol or its numeric assignments have been accepted upstream.
+The refresh ceiling, capacity policy and overload requirements below are proposed
+changes beyond the pinned prototype and are identified as such.
 
 ## Motivation and scope
 
@@ -50,8 +52,13 @@ services MUST NOT originate announcements during normal operation; it can still
 receive and relay announcements. Disabling forwarding only controls that node:
 recipients may relay its own advertisements further.
 
-The proof of concept accepts refresh intervals from 5 through 60 minutes,
-inclusive. An omitted or empty interval selects 15 minutes. Invalid intervals,
+Publishers MUST accept configured refresh intervals from 5 through 30 minutes,
+inclusive, and MUST reject values outside that range. An omitted or empty interval
+SHOULD select 15 minutes. The 30-minute ceiling leaves at least half of the
+60-minute lifetime for delivery of a scheduled renewal. At exactly 30 minutes,
+losing that renewal can still cause a gap because the next one is due at expiry;
+the 15-minute default provides more retry opportunities. Delivery is best effort. The pinned proof of concept instead permits up to 60 minutes
+and needs adjustment to meet this proposal. Invalid intervals,
 invalid local services and an oversized local announcement cause startup failure,
 including when discovery is disabled. Configuration changes require a restart.
 These defaults and configuration syntax are implementation policy proposed for
@@ -85,7 +92,7 @@ A service is identified by the pair `(publisher public key, Name)`. Two publishe
 MAY use the same name. A snapshot MUST contain at most 32 services with distinct,
 case-sensitive names. No Unicode normalization is performed by the prototype.
 
-Each service contains these case-sensitive JSON members:
+Each service contains these JSON members:
 
 | Member | Type | Validation |
 |:--|:--|:--|
@@ -140,6 +147,16 @@ _, _ = d.core.PacketConn.WriteTo(bs, iwt.Addr(to[:]))
 ```
 
 The announcement body MUST be at most 8192 bytes, excluding the two prefix bytes.
+This byte limit and the 32-service limit MUST both hold for the complete serialized
+envelope, including its signature, JSON escaping and whitespace. A valid name
+can expand during serialization; 32 individually valid services are not guaranteed
+to fit. A publisher MUST reject an oversized snapshot with an actionable error.
+It MUST NOT silently truncate the list or split it across independent announcements:
+each accepted announcement replaces the entire snapshot. Before sending, an
+implementation MUST also ensure that the body plus both framing bytes fits its
+encrypted session MTU, and MUST handle send errors without unbounded retries.
+The TUN interface MTU does not determine this in-band message limit.
+
 It is a UTF-8 JSON object with members `Payload` and `Signature`. `Payload` is
 an embedded JSON object, not a quoted JSON string or base64 string. `Signature`
 is the standard padded base64 encoding of a 64-byte Ed25519 signature, as produced
@@ -197,19 +214,22 @@ For an incoming announcement, a participating receiver MUST:
 
 1. Reject a body larger than 8192 bytes or a sender whose session public key is
    not currently associated with an authenticated direct peer connection.
-2. Decode the envelope and payload; reject malformed JSON.
+2. Apply the pre-verification overload controls below. Decode the envelope and
+   payload; reject malformed JSON.
 3. Require version 1 and a 32-byte publisher key. With `now` in Unix seconds,
    require `now - 3600 < Issued <= now + 30`.
 4. Reject its own publisher key and validate all advertised services.
 5. Verify the Ed25519 signature over the domain prefix and raw payload bytes.
 6. Remove expired cache entries. If a record for this publisher exists, require
-   a strictly greater `Issued` value. If no record exists and the cache contains
-   1024 publishers, reject the new publisher.
+   a strictly greater `Issued` value. If no record exists and the local capacity
+   is exhausted, reject the new publisher. The default capacity
+   is 1024 publishers including any reserved local publisher slot, as defined below.
 7. Atomically replace that publisher's complete cached snapshot and retain its
    original wire representation.
-8. If forwarding is enabled, attempt to send the accepted announcement once to
-   each currently connected peer, excluding the incoming peer and the original
-   publisher.
+8. If forwarding is enabled, attempt to send the accepted announcement at most
+   once to each currently connected peer, excluding the incoming peer and the
+   original publisher, subject to the bounded relay budgets below. Exhausted
+   budgets MAY cause eligible sends to be dropped.
 
 The source of a session is the immediate relay; `Payload.Key` identifies the
 publisher. They do not need to match. Direct peer membership is tracked around
@@ -263,8 +283,10 @@ appear in local results. The prototype cleans the cache in its worker and before
 returning results, and also before accepting a validated incoming snapshot.
 
 Clocks should be synchronized. A timestamp up to 30 seconds ahead is accepted,
-so the remaining lifetime at receipt can slightly exceed an hour. At the maximum
-60-minute refresh interval, transmission delay can cause gaps in visibility.
+so the remaining lifetime at receipt can slightly exceed an hour. The proposed
+30-minute refresh ceiling leaves headroom for delivery delay. A lost renewal
+can still cause expiration, particularly at the 30-minute setting. The prototype's 60-minute ceiling provides no
+such headroom and can cause gaps even with a small transmission delay.
 
 The protocol supports signed empty withdrawals, but the prototype's publication
 loop never originates them: removing the last service and restarting stops
@@ -309,17 +331,98 @@ Do not publish sensitive service names or endpoints based solely on `Forward:
 false`. The feature uses existing session transport and adds no independent
 access-control mechanism.
 
-The proposed bounds are 32 services per publisher, 8192 bytes per body and 1024
-cached publishers. Empty records count toward the publisher limit. In the
-prototype, the locally originated record shares this map; its insertion is not
-subject to the foreign-record capacity gate. Thus a local publication after a
-foreign cache fills can transiently take the map above 1024 entries.
+### Size and capacity policy
 
-Bounds do not prevent Sybil identities from occupying the cache, signature
-verification exhaustion or rapid valid newer announcements from flooding relay
-links. A full cache allows existing publishers to update but rejects new ones
-until records expire. There is no fairness, per-peer rate limit or admission
-mechanism in this version.
+Retain the limits of 32 services, 128 UTF-8 bytes per name and 8192 bytes per
+serialized announcement. Compact encoding leaves useful room for ordinary
+service lists without increasing the maximum relayed message size.
+
+For illustration, using a 10-digit timestamp, a 38-character IPv6 address, port
+65535, transport `tcp+udp`, and standard base64 key and signature fields gives
+these calculated envelope sizes with compact JSON and Go-style HTML escaping:
+
+| Service list | Envelope bytes |
+|:--|--:|
+| One service named `wiki-00` | 318 |
+| 32 services named `wiki-00` through `wiki-31` | 3542 |
+| 32 distinct 128-byte names, each a two-digit index followed by 126 ASCII `a` characters | 7414 |
+| Ten distinct 128-byte names, each a two-digit index followed by 126 `<` characters | 8764 (rejected) |
+
+These are size calculations, not performance measurements or protocol test
+vectors. The escaping behavior is documented by
+[Go's JSON encoder](https://pkg.go.dev/encoding/json#Marshal).
+In the pinned transport, Yggdrasil configures a 131070-byte peer message limit;
+Ironwood subtracts routing and encryption overhead when reporting its session
+MTU. An 8194-byte discovery write is comfortably below that MTU. This does not
+mean it fits into a single underlying IP packet. See
+[Yggdrasil transport setup](https://github.com/floscodes/yggdrasil-go/blob/1c34b913e1c5ae9e8d99e54e1da9395cf732d2a0/src/core/core.go),
+[Ironwood network MTU](https://github.com/Arceliar/ironwood/blob/0712eccbb962/network/packetconn.go)
+and [encrypted MTU](https://github.com/Arceliar/ironwood/blob/0712eccbb962/encrypted/packetconn.go).
+
+Publisher capacity is a local resource policy, not a network-wide publisher limit
+or a promise of complete discovery. Implementations SHOULD default to 1024 cached
+publishers and MAY expose a configurable finite capacity. They MUST enforce the
+configured capacity atomically, including empty withdrawal records and the local
+publisher. If local publication is configured, one slot MUST be reserved before
+foreign announcements can consume the remaining capacity. A new foreign origin
+MUST be rejected when those slots are full; existing origins MAY still update
+subject to the overload controls. Expired records MUST release their slots.
+
+This reservation is a proposed correction: the prototype shares the map with its
+local publisher but does not apply its foreign-origin capacity gate to local
+insertion, so the map can exceed 1024 entries by one.
+
+At the default capacity, retained wire bodies alone can occupy 8 MiB and the
+service count can reach 32768. Decoded strings, structs, map entries, allocator
+costs and temporary processing require additional memory. Implementations MUST
+also bound pending work; the wire-body limit is not a process-memory limit.
+
+A full cache can remain occupied by renewing publishers indefinitely. Different
+nodes can retain different subsets of publishers, and a rejected origin is not
+forwarded. Implementations MUST expose capacity rejections through local counters
+or status so consumers can distinguish an empty result from known incomplete
+coverage. A larger cache alone does not solve fairness or Sybil admission.
+
+### Overload controls
+
+Before stable deployment, implementations MUST bound discovery work independently
+of ordinary application traffic. At minimum they MUST provide:
+
+- Per-authenticated-peer and global ingress budgets, accounting for both message
+  count and bytes before JSON decoding and signature verification. Invalid,
+  duplicate and older messages MUST consume those budgets too.
+- Bounded verification concurrency and bounded queues. Excess work MUST be dropped
+  rather than accumulated indefinitely or allowed to monopolize application
+  packet processing.
+- Per-publisher budgets for accepting newer snapshots after authentication, plus
+  global and per-outgoing-peer relay budgets for message count and bytes. Publisher
+  budgets MUST NOT be allocated into an unbounded map for arbitrary claimed keys.
+- Finite burst allowances and local counters for ingress, verification-queue and
+  relay drops. Overload handling MUST NOT generate one response or log entry for
+  every dropped packet.
+
+Budgets MUST have documented finite defaults and SHOULD be configurable for node
+capacity and expected discovery population. Exact rates require load measurements
+before stable release; the size calculation here is not evidence for a safe CPU
+budget. A publisher's configured five-minute minimum refresh interval MUST NOT be
+assumed to constrain incoming traffic: the prototype does not enforce that
+interval at reception, and valid timestamp sequences can arrive in a burst.
+
+An implementation MAY skip repeated verification of an exact previously verified
+announcement using a bounded cache of full-message digests. Unverified publisher
+keys or timestamps MUST NOT advance replay state or suppress a later valid
+snapshot. A different byte sequence still requires normal authentication.
+
+For scale, 1024 publishers sending 8192-byte bodies every 15 minutes produce about
+9.1 KiB/s per outgoing copy, including the two discovery framing bytes. Four
+eligible outgoing peers require about 36.4 KiB/s; at five-minute refresh this
+becomes about 109.3 KiB/s. These steady-state calculations exclude session and
+link overhead, incoming duplicates, initial retries and synchronized bursts.
+Relay budgets must account for fan-out rather than just ingress bytes.
+
+The pinned prototype has none of these rate or queue controls in its discovery
+handler and verifies duplicates before rejecting their timestamps. Packet and
+cache size bounds alone therefore do not make it ready for stable deployment.
 
 Replay suppression lasts only while a publisher's latest timestamp remains in
 the cache. After cache loss or expiry, an otherwise valid unexpired snapshot can
@@ -327,7 +430,30 @@ be accepted again. This can also affect withdrawals after receiver restart.
 A future-dated accepted snapshot can temporarily suppress a publisher's
 lower-timestamped updates. Timestamp sequencing and clock rollback require care.
 
-## Proof-of-concept evidence and review questions
+## Required validation and proof-of-concept evidence
+
+Implementations MUST validate the following before stable release:
+
+- Otherwise valid envelopes of exactly 8192 bytes pass the size gate; envelopes
+  of 8193 bytes fail without caching or relaying. Both framing bytes must fit the
+  session MTU, and send failures must remain bounded.
+- Both service-count and byte limits apply, including 32 long names, JSON-escaped
+  names, 128/129 UTF-8 byte name boundaries, and 32/33 service boundaries. An
+  oversized local snapshot produces a clear error and no partial publication.
+- Refresh configuration accepts 5, 15 and 30 minutes and rejects values above
+  30 minutes or below five. Expiration remains 60 minutes from signed issuance.
+- At full capacity, local publication, concurrent foreign insertion, empty
+  withdrawals, renewals and expiration never exceed the configured publisher
+  capacity. Capacity rejection is observable.
+- Duplicate floods, forged signatures, rapid valid renewals and many claimed
+  identities cannot bypass the budgets or grow queues or limiter state without
+  bound. Relay fan-out stays within outgoing budgets, and application traffic
+  continues to progress under discovery load.
+
+These are required future implementation checks, not tests executed by this
+documentation change.
+
+### Existing evidence and remaining review questions
 
 The [discovery test suite](https://github.com/floscodes/yggdrasil-go/blob/1c34b913e1c5ae9e8d99e54e1da9395cf732d2a0/src/core/discovery_test.go) contains tests for
 service validation, endpoint ownership (including routed devices and foreign
@@ -347,13 +473,13 @@ Before accepting a stable specification, reviewers should resolve:
 - Whether publisher ordering needs a sequence number or stronger restart and
   clock-rollback semantics instead of second-resolution timestamps.
 - Whether explicit withdrawal publication and durable replay state are needed.
-- Capacity semantics for the local publisher and rate limits or admission policy
-  against flooding and cache exhaustion.
+- Measured defaults for the required rate budgets, queue bounds and burst
+  allowances, plus admission fairness against Sybil-driven cache exhaustion.
 - Whether best-effort renewal is sufficient, or a later version should add
   synchronization for newly connected peers and recovery from lost relays.
-- Packet-size behavior against the underlying session MTU and compatibility
+- Transport boundary and overload validation as required above, and compatibility
   testing with older Yggdrasil releases.
 
 These questions are intentionally explicit: the proposal describes the working
-mechanism at the pinned revision while leaving its standardization decisions
-open for review.
+mechanism at the pinned revision, identifies proposed hardening beyond that
+revision, and leaves the remaining standardization decisions open for review.
